@@ -85,5 +85,10 @@ run_gither "cat-random-gray2.png" -algorithm random -quantizer gray-levels -leve
 run_gither "cat-riemersma-rgb4.png" -algorithm riemersma -quantizer rgb-levels -levels 4
 run_gither "cat-am-fm-hybrid-64x64-gray2.png" -algorithm am-fm-hybrid-64x64 -quantizer gray-levels -levels 2 -seed 7
 run_gither "cat-clustered-am-fm-64x64-gray2.png" -algorithm clustered-am-fm-64x64 -quantizer gray-levels -levels 2 -seed 7
+run_gither "cat-dbs-preview-gray2.png" -algorithm dbs -quantizer gray-levels -levels 2 -dbs-schedule preview
+run_gither "cat-dbs-balanced-gray2.png" -algorithm dbs -quantizer gray-levels -levels 2 -dbs-schedule balanced
+run_gither "cat-clustered-dbs-gray2.png" -algorithm clustered-dbs -quantizer gray-levels -levels 2 -dbs-schedule balanced -dbs-cluster-strength 0.18
+run_gither "cat-multilevel-dbs-gray4.png" -algorithm multilevel-dbs -quantizer gray-levels -levels 4 -dbs-schedule balanced
+run_gither "cat-color-dbs-auto6.png" -algorithm color-dbs -quantizer palette -palette auto -palette-colors 6 -dbs-schedule balanced
 
 echo "wrote outputs to $OUTPUT_DIR"
