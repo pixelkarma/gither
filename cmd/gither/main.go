@@ -72,12 +72,12 @@ func parseFlags() config {
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "Usage: gither -in input.png -out output.png [options]\n\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "Algorithms:\n")
-		fmt.Fprintf(flag.CommandLine.Output(), "  ordered: bayer-2x2, bayer-4x4, bayer-8x8, bayer-16x16, adaptive-bayer-8x8, adaptive-bayer-16x16, cluster-dot-4x4, cluster-dot-8x8, cluster-dot-16x16, stochastic-cluster-dot-16x16, polyomino-16x16, space-filling-16x16, space-filling-morton-16x16, space-filling-serpentine-16x16, void-and-cluster-64x64, blue-noise-multitone-64x64, custom-ordered\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "  ordered: bayer-2x2, bayer-4x4, bayer-8x8, bayer-16x16, adaptive-bayer-8x8, adaptive-bayer-16x16, cluster-dot-4x4, cluster-dot-8x8, cluster-dot-16x16, stochastic-cluster-dot-16x16, polyomino-16x16, space-filling-16x16, space-filling-morton-16x16, space-filling-serpentine-16x16, void-and-cluster-64x64, blue-noise-multitone-64x64, blue-noise-soft-64x64, blue-noise-hard-64x64, dot-diffusion-8x8, dot-diffusion-diagonal-8x8, custom-ordered\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  palette-ordered: yliluoma-1, yliluoma-2, yliluoma-3\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  diffusion: floyd-steinberg, false-floyd-steinberg, jjn, stucki, burkes, sierra, two-row-sierra, sierra-lite, stevenson-arce, atkinson\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  variable diffusion: ostromoukhov, zhou-fang, balanced-variable, balanced-variable-thresholded, smooth-variable, punchy-variable\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  stochastic: threshold, random\n")
-		fmt.Fprintf(flag.CommandLine.Output(), "  advanced: riemersma\n\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "  advanced: riemersma, am-fm-hybrid-64x64, clustered-am-fm-64x64\n\n")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -261,6 +261,14 @@ func applyAlgorithm(img *gither.Image, cfg config, opts gither.Options) error {
 		return gither.VoidAndCluster64x64(img, opts)
 	case "blue-noise-multitone-64x64":
 		return gither.BlueNoiseMultitone64x64(img, opts)
+	case "blue-noise-soft-64x64":
+		return gither.BlueNoiseSoft64x64(img, opts)
+	case "blue-noise-hard-64x64":
+		return gither.BlueNoiseHard64x64(img, opts)
+	case "dot-diffusion-8x8":
+		return gither.DotDiffusion8x8(img, opts)
+	case "dot-diffusion-diagonal-8x8":
+		return gither.DotDiffusionDiagonal8x8(img, opts)
 	case "yliluoma-1":
 		return gither.Yliluoma1(img, opts)
 	case "yliluoma-2":
@@ -311,6 +319,10 @@ func applyAlgorithm(img *gither.Image, cfg config, opts gither.Options) error {
 		return gither.Random(img, opts)
 	case "riemersma":
 		return gither.Riemersma(img, opts)
+	case "am-fm-hybrid-64x64":
+		return gither.AMFMHybrid64x64(img, opts)
+	case "clustered-am-fm-64x64":
+		return gither.ClusteredAMFM64x64(img, opts)
 	default:
 		return fmt.Errorf("unsupported algorithm %q", cfg.algorithm)
 	}

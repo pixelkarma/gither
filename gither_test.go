@@ -282,6 +282,58 @@ func TestAdditionalVariableCurvesDeterministic(t *testing.T) {
 	}
 }
 
+func TestStepTwoOrderedDeterministic(t *testing.T) {
+	cases := []struct {
+		name string
+		run  func(*Image) error
+	}{
+		{name: "dot-diffusion", run: func(img *Image) error { return DotDiffusion8x8(img, Options{Quantizer: RGBLevels(4)}) }},
+		{name: "dot-diffusion-diagonal", run: func(img *Image) error { return DotDiffusionDiagonal8x8(img, Options{Quantizer: RGBLevels(4)}) }},
+		{name: "blue-noise-soft", run: func(img *Image) error { return BlueNoiseSoft64x64(img, Options{Quantizer: GrayLevels(2)}) }},
+		{name: "blue-noise-hard", run: func(img *Image) error { return BlueNoiseHard64x64(img, Options{Quantizer: GrayLevels(2)}) }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			imgA, _ := NewPackedImage(rgbGradient(16, 16), 16, 16, RGB8)
+			imgB, _ := NewPackedImage(rgbGradient(16, 16), 16, 16, RGB8)
+			if err := tc.run(imgA); err != nil {
+				t.Fatal(err)
+			}
+			if err := tc.run(imgB); err != nil {
+				t.Fatal(err)
+			}
+			if hashBytes(imgA.Pix) != hashBytes(imgB.Pix) {
+				t.Fatal("step two ordered mode should be deterministic")
+			}
+		})
+	}
+}
+
+func TestAMFMModesDeterministic(t *testing.T) {
+	cases := []struct {
+		name string
+		run  func(*Image) error
+	}{
+		{name: "am-fm-hybrid", run: func(img *Image) error { return AMFMHybrid64x64(img, Options{Quantizer: GrayLevels(2), Seed: 7}) }},
+		{name: "clustered-am-fm", run: func(img *Image) error { return ClusteredAMFM64x64(img, Options{Quantizer: GrayLevels(2), Seed: 7}) }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			imgA, _ := NewPackedImage(grayRamp(16, 16), 16, 16, Gray8)
+			imgB, _ := NewPackedImage(grayRamp(16, 16), 16, 16, Gray8)
+			if err := tc.run(imgA); err != nil {
+				t.Fatal(err)
+			}
+			if err := tc.run(imgB); err != nil {
+				t.Fatal(err)
+			}
+			if hashBytes(imgA.Pix) != hashBytes(imgB.Pix) {
+				t.Fatal("am/fm mode should be deterministic")
+			}
+		})
+	}
+}
+
 func TestVariableDiffusionPreservesRGBAAlpha(t *testing.T) {
 	pix := rgbaGradient(12, 12)
 	alpha := make([]uint8, 12*12)

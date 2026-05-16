@@ -49,6 +49,10 @@ run_gither "cat-space-filling-morton-16x16-rgb4.png" -algorithm space-filling-mo
 run_gither "cat-space-filling-serpentine-16x16-rgb4.png" -algorithm space-filling-serpentine-16x16 -quantizer rgb-levels -levels 4
 run_gither "cat-void-and-cluster-64x64-rgb4.png" -algorithm void-and-cluster-64x64 -quantizer rgb-levels -levels 4
 run_gither "cat-blue-noise-multitone-64x64-gray2.png" -algorithm blue-noise-multitone-64x64 -quantizer gray-levels -levels 2
+run_gither "cat-blue-noise-soft-64x64-gray2.png" -algorithm blue-noise-soft-64x64 -quantizer gray-levels -levels 2
+run_gither "cat-blue-noise-hard-64x64-gray2.png" -algorithm blue-noise-hard-64x64 -quantizer gray-levels -levels 2
+run_gither "cat-dot-diffusion-8x8-rgb4.png" -algorithm dot-diffusion-8x8 -quantizer rgb-levels -levels 4
+run_gither "cat-dot-diffusion-diagonal-8x8-rgb4.png" -algorithm dot-diffusion-diagonal-8x8 -quantizer rgb-levels -levels 4
 
 # Yliluoma palette-ordered variants.
 run_gither "cat-yliluoma-1-auto6.png" -algorithm yliluoma-1 -quantizer palette -palette auto -palette-colors 6
@@ -79,5 +83,7 @@ run_gither "cat-punchy-variable-gray2.png" -algorithm punchy-variable -quantizer
 run_gither "cat-threshold-gray2.png" -algorithm threshold -quantizer gray-levels -levels 2 -threshold 127
 run_gither "cat-random-gray2.png" -algorithm random -quantizer gray-levels -levels 2 -seed 7 -random-strength 40
 run_gither "cat-riemersma-rgb4.png" -algorithm riemersma -quantizer rgb-levels -levels 4
+run_gither "cat-am-fm-hybrid-64x64-gray2.png" -algorithm am-fm-hybrid-64x64 -quantizer gray-levels -levels 2 -seed 7
+run_gither "cat-clustered-am-fm-64x64-gray2.png" -algorithm clustered-am-fm-64x64 -quantizer gray-levels -levels 2 -seed 7
 
 echo "wrote outputs to $OUTPUT_DIR"

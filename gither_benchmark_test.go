@@ -40,6 +40,10 @@ func BenchmarkAlgorithmsFixtureCat(b *testing.B) {
 		{name: "space-filling-serpentine-16x16", run: func(img *Image) error { return SpaceFillingSerpentine16x16(img, Options{Quantizer: RGBLevels(4)}) }},
 		{name: "void-and-cluster-64x64", run: func(img *Image) error { return VoidAndCluster64x64(img, Options{Quantizer: RGBLevels(4)}) }},
 		{name: "blue-noise-multitone-64x64", run: func(img *Image) error { return BlueNoiseMultitone64x64(img, Options{Quantizer: GrayLevels(2)}) }},
+		{name: "blue-noise-soft-64x64", run: func(img *Image) error { return BlueNoiseSoft64x64(img, Options{Quantizer: GrayLevels(2)}) }},
+		{name: "blue-noise-hard-64x64", run: func(img *Image) error { return BlueNoiseHard64x64(img, Options{Quantizer: GrayLevels(2)}) }},
+		{name: "dot-diffusion-8x8", run: func(img *Image) error { return DotDiffusion8x8(img, Options{Quantizer: RGBLevels(4)}) }},
+		{name: "dot-diffusion-diagonal-8x8", run: func(img *Image) error { return DotDiffusionDiagonal8x8(img, Options{Quantizer: RGBLevels(4)}) }},
 		{name: "yliluoma-1", run: func(img *Image) error { return Yliluoma1(img, Options{Quantizer: PaletteQuantizer(autoPalette)}) }},
 		{name: "yliluoma-2", run: func(img *Image) error { return Yliluoma2(img, Options{Quantizer: PaletteQuantizer(autoPalette)}) }},
 		{name: "yliluoma-3", run: func(img *Image) error { return Yliluoma3(img, Options{Quantizer: PaletteQuantizer(autoPalette)}) }},
@@ -63,6 +67,8 @@ func BenchmarkAlgorithmsFixtureCat(b *testing.B) {
 			return Random(img, Options{Quantizer: GrayLevels(2), Seed: 7, RandomStrength: 40})
 		}},
 		{name: "riemersma", run: func(img *Image) error { return Riemersma(img, Options{Quantizer: RGBLevels(4)}) }},
+		{name: "am-fm-hybrid-64x64", run: func(img *Image) error { return AMFMHybrid64x64(img, Options{Quantizer: GrayLevels(2), Seed: 7}) }},
+		{name: "clustered-am-fm-64x64", run: func(img *Image) error { return ClusteredAMFM64x64(img, Options{Quantizer: GrayLevels(2), Seed: 7}) }},
 	}
 	for _, bc := range cases {
 		b.Run(bc.name, func(b *testing.B) {
