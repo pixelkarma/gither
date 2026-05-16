@@ -59,31 +59,34 @@ func ApplyOrdered(img *core.Image, ordered OrderedMap, opts core.Options) error 
 		strength = core.DefaultOrderedStrength
 	}
 	channels := img.ChannelCount()
-	for y := 0; y < img.Height; y++ {
-		row := img.Row(y)
-		for x := 0; x < img.Width; x++ {
-			rank := ordered.Values[(y%ordered.Height)*ordered.Width+(x%ordered.Width)] - mapMin
-			threshold := orderedThresholdUnit(rank, thresholdDen, strength)
-			offset := x * channels
-			switch img.Format {
-			case core.Gray8:
-				gray := mathx.UnitToByte(mathx.ByteToUnit(row[offset]) + threshold)
-				row[offset] = opts.Quantizer.QuantizeGrayFromRGB(gray, gray, gray)
-			case core.RGB8:
-				r := mathx.UnitToByte(mathx.ByteToUnit(row[offset]) + threshold)
-				g := mathx.UnitToByte(mathx.ByteToUnit(row[offset+1]) + threshold)
-				b := mathx.UnitToByte(mathx.ByteToUnit(row[offset+2]) + threshold)
-				row[offset], row[offset+1], row[offset+2] = opts.Quantizer.QuantizeColor(r, g, b)
-			case core.RGBA8:
-				alpha := row[offset+3]
-				r := mathx.UnitToByte(mathx.ByteToUnit(row[offset]) + threshold)
-				g := mathx.UnitToByte(mathx.ByteToUnit(row[offset+1]) + threshold)
-				b := mathx.UnitToByte(mathx.ByteToUnit(row[offset+2]) + threshold)
-				row[offset], row[offset+1], row[offset+2] = opts.Quantizer.QuantizeColor(r, g, b)
-				row[offset+3] = alpha
+	parallelRows(img.Height, func(y0, y1 int) {
+		for y := y0; y < y1; y++ {
+			row := img.Row(y)
+			mapRowBase := (y % ordered.Height) * ordered.Width
+			for x := 0; x < img.Width; x++ {
+				rank := ordered.Values[mapRowBase+(x%ordered.Width)] - mapMin
+				threshold := orderedThresholdUnit(rank, thresholdDen, strength)
+				offset := x * channels
+				switch img.Format {
+				case core.Gray8:
+					gray := mathx.UnitToByte(mathx.ByteToUnit(row[offset]) + threshold)
+					row[offset] = opts.Quantizer.QuantizeGrayFromRGB(gray, gray, gray)
+				case core.RGB8:
+					r := mathx.UnitToByte(mathx.ByteToUnit(row[offset]) + threshold)
+					g := mathx.UnitToByte(mathx.ByteToUnit(row[offset+1]) + threshold)
+					b := mathx.UnitToByte(mathx.ByteToUnit(row[offset+2]) + threshold)
+					row[offset], row[offset+1], row[offset+2] = opts.Quantizer.QuantizeColor(r, g, b)
+				case core.RGBA8:
+					alpha := row[offset+3]
+					r := mathx.UnitToByte(mathx.ByteToUnit(row[offset]) + threshold)
+					g := mathx.UnitToByte(mathx.ByteToUnit(row[offset+1]) + threshold)
+					b := mathx.UnitToByte(mathx.ByteToUnit(row[offset+2]) + threshold)
+					row[offset], row[offset+1], row[offset+2] = opts.Quantizer.QuantizeColor(r, g, b)
+					row[offset+3] = alpha
+				}
 			}
 		}
-	}
+	})
 	return nil
 }
 
