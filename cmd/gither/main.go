@@ -19,35 +19,37 @@ import (
 )
 
 type config struct {
-	in             string
-	out            string
-	algorithm      string
-	quantizer      string
-	levels         int
-	palette        string
-	paletteColors  int
-	paletteMethod  string
-	paletteSort    string
-	singleColor    string
-	strength       float64
-	threshold      int
-	seed           uint64
-	randomStrength int
-	dbsSeed        string
-	dbsPasses      int
-	dbsMove        string
-	dbsRadius      int
-	dbsMetric      string
-	dbsSchedule    string
-	dbsScan        string
-	dbsNoImprove   int
-	dbsRestarts    int
-	dbsRadiusMode  string
-	mapPath        string
-	mapWidth       int
-	mapHeight      int
-	jpegQuality    int
-	verbose        bool
+	in                  string
+	out                 string
+	algorithm           string
+	quantizer           string
+	levels              int
+	palette             string
+	paletteColors       int
+	paletteMethod       string
+	paletteSort         string
+	singleColor         string
+	strength            float64
+	threshold           int
+	seed                uint64
+	randomStrength      int
+	dbsSeed             string
+	dbsPasses           int
+	dbsMove             string
+	dbsRadius           int
+	dbsMetric           string
+	dbsSchedule         string
+	dbsScan             string
+	dbsNoImprove        int
+	dbsRestarts         int
+	dbsRadiusMode       string
+	dbsClusterStrength  float64
+	dbsClusterToneAware bool
+	mapPath             string
+	mapWidth            int
+	mapHeight           int
+	jpegQuality         int
+	verbose             bool
 }
 
 func main() {
@@ -84,6 +86,8 @@ func parseFlags() config {
 	flag.IntVar(&cfg.dbsNoImprove, "dbs-max-no-improve", 1, "DBS consecutive no-improvement passes before stop")
 	flag.IntVar(&cfg.dbsRestarts, "dbs-restarts", 0, "DBS restart count")
 	flag.StringVar(&cfg.dbsRadiusMode, "dbs-radius-policy", "fixed", "DBS radius policy: fixed|expand")
+	flag.Float64Var(&cfg.dbsClusterStrength, "dbs-cluster-strength", 0.0, "DBS clustered boundary regularization strength")
+	flag.BoolVar(&cfg.dbsClusterToneAware, "dbs-cluster-tone-aware", true, "DBS clustered mode uses stronger clustering in midtones")
 	flag.StringVar(&cfg.mapPath, "map", "", "path to custom ordered map file")
 	flag.IntVar(&cfg.mapWidth, "map-width", 0, "custom ordered map width")
 	flag.IntVar(&cfg.mapHeight, "map-height", 0, "custom ordered map height")
@@ -97,7 +101,7 @@ func parseFlags() config {
 		fmt.Fprintf(flag.CommandLine.Output(), "  diffusion: floyd-steinberg, false-floyd-steinberg, jjn, stucki, burkes, sierra, two-row-sierra, sierra-lite, stevenson-arce, atkinson\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  variable diffusion: ostromoukhov, zhou-fang, balanced-variable, balanced-variable-thresholded, smooth-variable, punchy-variable\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  stochastic: threshold, random\n")
-		fmt.Fprintf(flag.CommandLine.Output(), "  advanced: riemersma, am-fm-hybrid-64x64, clustered-am-fm-64x64, dbs\n\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "  advanced: riemersma, am-fm-hybrid-64x64, clustered-am-fm-64x64, dbs, clustered-dbs\n\n")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -122,7 +126,7 @@ func run(cfg config) error {
 		return err
 	}
 	var dbsReport *gither.DBSReport
-	if cfg.algorithm == "dbs" {
+	if cfg.algorithm == "dbs" || cfg.algorithm == "clustered-dbs" {
 		dbsReport = &gither.DBSReport{}
 	}
 	if err := applyAlgorithm(img, cfg, opts, dbsReport); err != nil {
@@ -350,6 +354,9 @@ func applyAlgorithm(img *gither.Image, cfg config, opts gither.Options, dbsRepor
 	case "dbs":
 		dbsOpts := buildDBSOptions(cfg, dbsReport)
 		return gither.DirectBinarySearch(img, dbsOpts)
+	case "clustered-dbs":
+		dbsOpts := buildDBSOptions(cfg, dbsReport)
+		return gither.ClusteredDBS(img, dbsOpts)
 	default:
 		return fmt.Errorf("unsupported algorithm %q", cfg.algorithm)
 	}
@@ -407,18 +414,20 @@ func clampInt(v, lo, hi int) int {
 
 func buildDBSOptions(cfg config, report *gither.DBSReport) gither.DBSOptions {
 	opts := gither.DBSOptions{
-		Seed:         parseDBSSeed(cfg.dbsSeed),
-		Passes:       cfg.dbsPasses,
-		Threshold:    uint8(clampInt(cfg.threshold, 0, 255)),
-		MoveMode:     parseDBSMoveMode(cfg.dbsMove),
-		Neighborhood: cfg.dbsRadius,
-		Metric:       parseDBSMetric(cfg.dbsMetric),
-		ScanOrder:    parseDBSScanOrder(cfg.dbsScan),
-		RadiusPolicy: parseDBSRadiusPolicy(cfg.dbsRadiusMode),
-		MaxNoImprove: cfg.dbsNoImprove,
-		Restarts:     cfg.dbsRestarts,
-		RandomSeed:   cfg.seed,
-		Report:       report,
+		Seed:             parseDBSSeed(cfg.dbsSeed),
+		Passes:           cfg.dbsPasses,
+		Threshold:        uint8(clampInt(cfg.threshold, 0, 255)),
+		MoveMode:         parseDBSMoveMode(cfg.dbsMove),
+		Neighborhood:     cfg.dbsRadius,
+		Metric:           parseDBSMetric(cfg.dbsMetric),
+		ScanOrder:        parseDBSScanOrder(cfg.dbsScan),
+		RadiusPolicy:     parseDBSRadiusPolicy(cfg.dbsRadiusMode),
+		MaxNoImprove:     cfg.dbsNoImprove,
+		Restarts:         cfg.dbsRestarts,
+		RandomSeed:       cfg.seed,
+		ClusterStrength:  float32(cfg.dbsClusterStrength),
+		ClusterToneAware: cfg.dbsClusterToneAware,
+		Report:           report,
 	}
 	applyDBSSchedulePreset(&opts, cfg.dbsSchedule)
 	return opts
@@ -457,10 +466,10 @@ func printStats(cfg config, img *gither.Image, dbsReport *gither.DBSReport, star
 	processElapsed := processedAt.Sub(startedAt)
 	saveElapsed := finishedAt.Sub(processedAt)
 	totalElapsed := finishedAt.Sub(startedAt)
-	if cfg.algorithm == "dbs" && dbsReport != nil {
+	if (cfg.algorithm == "dbs" || cfg.algorithm == "clustered-dbs") && dbsReport != nil {
 		dbsOpts := buildDBSOptions(cfg, nil)
 		fmt.Fprintf(os.Stderr,
-			"stats algorithm=%s quantizer=%s size=%dx%d process_ms=%.3f save_ms=%.3f total_ms=%.3f dbs_schedule=%s dbs_metric=%s dbs_scan=%s dbs_passes_run=%d dbs_moves=%d dbs_flips=%d dbs_swaps=%d dbs_restarts=%d output=%s\n",
+			"stats algorithm=%s quantizer=%s size=%dx%d process_ms=%.3f save_ms=%.3f total_ms=%.3f dbs_schedule=%s dbs_metric=%s dbs_scan=%s dbs_cluster_strength=%.3f dbs_passes_run=%d dbs_moves=%d dbs_flips=%d dbs_swaps=%d dbs_restarts=%d output=%s\n",
 			cfg.algorithm,
 			describeQuantizer(cfg),
 			img.Width,
@@ -471,6 +480,7 @@ func printStats(cfg config, img *gither.Image, dbsReport *gither.DBSReport, star
 			strings.TrimSpace(cfg.dbsSchedule),
 			string(dbsOpts.Metric),
 			string(dbsOpts.ScanOrder),
+			float64(dbsOpts.ClusterStrength),
 			dbsReport.PassesRun,
 			dbsReport.AcceptedMoves,
 			dbsReport.FlipMoves,
@@ -521,6 +531,8 @@ func parsePaletteSort(value string) gither.PaletteSortMode {
 
 func parseDBSSeed(value string) gither.DBSSeed {
 	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "cluster-dot", "cluster-dot-16x16", "cluster16":
+		return gither.DBSSeedCluster16
 	case "bayer":
 		return gither.DBSSeedBayer
 	case "floyd-steinberg", "floyd", "fs":

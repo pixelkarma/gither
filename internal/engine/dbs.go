@@ -19,6 +19,7 @@ const (
 	DBSSeedThreshold DBSSeed = "threshold"
 	DBSSeedBayer     DBSSeed = "bayer"
 	DBSSeedFloyd     DBSSeed = "floyd-steinberg"
+	DBSSeedCluster16 DBSSeed = "cluster-dot-16x16"
 
 	DBSMoveFlip   DBSMoveMode = "flip"
 	DBSMoveSwap   DBSMoveMode = "swap"
@@ -37,18 +38,20 @@ const (
 )
 
 type DBSOptions struct {
-	Seed         DBSSeed
-	Passes       int
-	Threshold    uint8
-	MoveMode     DBSMoveMode
-	Neighborhood int
-	Metric       DBSMetric
-	ScanOrder    DBSScanOrder
-	RadiusPolicy DBSRadiusPolicy
-	MaxNoImprove int
-	Restarts     int
-	RandomSeed   uint64
-	Report       *DBSReport
+	Seed             DBSSeed
+	Passes           int
+	Threshold        uint8
+	MoveMode         DBSMoveMode
+	Neighborhood     int
+	Metric           DBSMetric
+	ScanOrder        DBSScanOrder
+	RadiusPolicy     DBSRadiusPolicy
+	MaxNoImprove     int
+	Restarts         int
+	RandomSeed       uint64
+	ClusterStrength  float32
+	ClusterToneAware bool
+	Report           *DBSReport
 }
 
 type DBSReport struct {
@@ -100,10 +103,25 @@ func (o DBSOptions) withDefaults() DBSOptions {
 }
 
 func DirectBinarySearch(img *core.Image, opts DBSOptions) error {
+	return runDBS(img, opts.withDefaults())
+}
+
+func ClusteredDBS(img *core.Image, opts DBSOptions) error {
+	opts = opts.withDefaults()
+	if opts.Seed == DBSSeedThreshold {
+		opts.Seed = DBSSeedCluster16
+	}
+	if opts.ClusterStrength <= 0 {
+		opts.ClusterStrength = 0.18
+	}
+	opts.ClusterToneAware = true
+	return runDBS(img, opts)
+}
+
+func runDBS(img *core.Image, opts DBSOptions) error {
 	if err := img.Validate(); err != nil {
 		return err
 	}
-	opts = opts.withDefaults()
 	metric := dbsMetricSpecFor(opts.Metric)
 	target := grayscalePlane(img)
 	targetFiltered := filteredGrayPlane(target, img.Width, img.Height, metric)
@@ -114,13 +132,13 @@ func DirectBinarySearch(img *core.Image, opts DBSOptions) error {
 	}
 	bestBinary := append([]uint8(nil), binary...)
 	bestFiltered := filteredGrayPlane(bestBinary, img.Width, img.Height, metric)
-	bestScore := dbsFullScore(bestFiltered, targetFiltered, errorWeights)
+	bestScore := dbsObjectiveScore(bestBinary, bestFiltered, target, targetFiltered, errorWeights, img.Width, img.Height, opts)
 	totalReport := DBSReport{}
 	for restart := 0; restart <= opts.Restarts; restart++ {
 		workingBinary := append([]uint8(nil), binary...)
 		workingFiltered := filteredGrayPlane(workingBinary, img.Width, img.Height, metric)
-		report := dbsOptimize(workingBinary, workingFiltered, targetFiltered, errorWeights, img.Width, img.Height, opts, metric, restart)
-		score := dbsFullScore(workingFiltered, targetFiltered, errorWeights)
+		report := dbsOptimize(workingBinary, workingFiltered, target, targetFiltered, errorWeights, img.Width, img.Height, opts, metric, restart)
+		score := dbsObjectiveScore(workingBinary, workingFiltered, target, targetFiltered, errorWeights, img.Width, img.Height, opts)
 		if restart == 0 || score < bestScore {
 			bestScore = score
 			copy(bestBinary, workingBinary)
@@ -142,7 +160,7 @@ func DirectBinarySearch(img *core.Image, opts DBSOptions) error {
 	return nil
 }
 
-func dbsOptimize(binary []uint8, filtered, targetFiltered, errorWeights []float32, width, height int, opts DBSOptions, metric dbsMetricSpec, restart int) DBSReport {
+func dbsOptimize(binary []uint8, filtered []float32, target []uint8, targetFiltered, errorWeights []float32, width, height int, opts DBSOptions, metric dbsMetricSpec, restart int) DBSReport {
 	report := DBSReport{RestartsUsed: restart}
 	noImprovePasses := 0
 	for pass := 0; pass < opts.Passes; pass++ {
@@ -154,7 +172,7 @@ func dbsOptimize(binary []uint8, filtered, targetFiltered, errorWeights []float3
 			original := binary[idx]
 			moveOpts := opts
 			moveOpts.Neighborhood = radius
-			bestMode, bestSwapX, bestSwapY, bestBefore, bestAfter := dbsBestMove(binary, filtered, targetFiltered, errorWeights, width, height, x, y, moveOpts, metric)
+			bestMode, bestSwapX, bestSwapY, bestBefore, bestAfter := dbsBestMove(binary, filtered, target, targetFiltered, errorWeights, width, height, x, y, moveOpts, metric)
 			if bestAfter+1e-9 < bestBefore {
 				improved = true
 				report.AcceptedMoves++
@@ -234,6 +252,14 @@ func dbsFullScore(filtered, targetFiltered, errorWeights []float32) float64 {
 	return score
 }
 
+func dbsObjectiveScore(binary []uint8, filtered []float32, target []uint8, targetFiltered, errorWeights []float32, width, height int, opts DBSOptions) float64 {
+	score := dbsFullScore(filtered, targetFiltered, errorWeights)
+	if opts.ClusterStrength > 0 {
+		score += fullClusterPenalty(binary, target, width, height, opts)
+	}
+	return score
+}
+
 func grayscalePlane(img *core.Image) []uint8 {
 	out := make([]uint8, img.Width*img.Height)
 	channels := img.ChannelCount()
@@ -283,6 +309,11 @@ func dbsSeedPlane(target []uint8, width, height int, opts DBSOptions) ([]uint8, 
 		if err := ApplyDiffusion(img, baseOpts, kernels.FloydSteinberg); err != nil {
 			return nil, err
 		}
+	case DBSSeedCluster16:
+		ordered := OrderedMap{Values: maps.GenerateClusterDot16x16(), Width: 16, Height: 16, Strength: core.DefaultOrderedStrength}
+		if err := ApplyOrdered(img, ordered, baseOpts); err != nil {
+			return nil, err
+		}
 	default:
 		if err := Threshold(img, baseOpts); err != nil {
 			return nil, err
@@ -291,7 +322,7 @@ func dbsSeedPlane(target []uint8, width, height int, opts DBSOptions) ([]uint8, 
 	return img.Pix, nil
 }
 
-func dbsBestMove(binary []uint8, filtered, targetFiltered, errorWeights []float32, width, height, x, y int, opts DBSOptions, metric dbsMetricSpec) (DBSMoveMode, int, int, float64, float64) {
+func dbsBestMove(binary []uint8, filtered []float32, target []uint8, targetFiltered, errorWeights []float32, width, height, x, y int, opts DBSOptions, metric dbsMetricSpec) (DBSMoveMode, int, int, float64, float64) {
 	bestMode := DBSMoveFlip
 	bestSwapX, bestSwapY := -1, -1
 	bestBefore, bestAfter := 0.0, 0.0
@@ -299,11 +330,14 @@ func dbsBestMove(binary []uint8, filtered, targetFiltered, errorWeights []float3
 	if opts.MoveMode == DBSMoveFlip || opts.MoveMode == DBSMoveHybrid {
 		delta := dbsPixelDelta(binary[y*width+x])
 		before, after := localFilteredErrorDelta(filtered, targetFiltered, errorWeights, width, height, x, y, delta, metric)
+		clusterBefore, clusterAfter := localClusterFlipDelta(binary, target, width, height, x, y, opts)
+		before += clusterBefore
+		after += clusterAfter
 		bestBefore, bestAfter = before, after
 		hasCandidate = true
 	}
 	if opts.MoveMode == DBSMoveSwap || opts.MoveMode == DBSMoveHybrid {
-		swapBefore, swapAfter, sx, sy, ok := bestSwapCandidate(binary, filtered, targetFiltered, errorWeights, width, height, x, y, opts.Neighborhood, metric)
+		swapBefore, swapAfter, sx, sy, ok := bestSwapCandidate(binary, filtered, target, targetFiltered, errorWeights, width, height, x, y, opts.Neighborhood, opts, metric)
 		if ok && (!hasCandidate || swapAfter < bestAfter) {
 			bestMode = DBSMoveSwap
 			bestSwapX, bestSwapY = sx, sy
@@ -317,7 +351,7 @@ func dbsBestMove(binary []uint8, filtered, targetFiltered, errorWeights []float3
 	return bestMode, bestSwapX, bestSwapY, bestBefore, bestAfter
 }
 
-func bestSwapCandidate(binary []uint8, filtered, targetFiltered, errorWeights []float32, width, height, x, y, radius int, metric dbsMetricSpec) (float64, float64, int, int, bool) {
+func bestSwapCandidate(binary []uint8, filtered []float32, target []uint8, targetFiltered, errorWeights []float32, width, height, x, y, radius int, opts DBSOptions, metric dbsMetricSpec) (float64, float64, int, int, bool) {
 	origin := binary[y*width+x]
 	bestBefore, bestAfter := 0.0, 0.0
 	bestX, bestY := -1, -1
@@ -337,6 +371,9 @@ func bestSwapCandidate(binary []uint8, filtered, targetFiltered, errorWeights []
 				continue
 			}
 			before, after := localSwapErrorDelta(filtered, targetFiltered, errorWeights, width, height, x, y, nx, ny, dbsPixelDelta(origin), dbsPixelDelta(other), metric)
+			clusterBefore, clusterAfter := localClusterSwapDelta(binary, target, width, height, x, y, nx, ny, opts)
+			before += clusterBefore
+			after += clusterAfter
 			if !found || after < bestAfter {
 				bestBefore, bestAfter = before, after
 				bestX, bestY = nx, ny
@@ -511,6 +548,148 @@ func dbsErrorWeights(target []uint8, width, height int, metric dbsMetricSpec) []
 	return weights
 }
 
+type dbsPixelChange struct {
+	x      int
+	y      int
+	newVal uint8
+}
+
+func localClusterFlipDelta(binary, target []uint8, width, height, x, y int, opts DBSOptions) (float64, float64) {
+	if opts.ClusterStrength <= 0 {
+		return 0, 0
+	}
+	idx := y*width + x
+	return localClusterPenalty(binary, target, width, height, opts, []dbsPixelChange{{
+		x:      x,
+		y:      y,
+		newVal: binary[idx] ^ 0xff,
+	}})
+}
+
+func localClusterSwapDelta(binary, target []uint8, width, height, x1, y1, x2, y2 int, opts DBSOptions) (float64, float64) {
+	if opts.ClusterStrength <= 0 {
+		return 0, 0
+	}
+	idx1 := y1*width + x1
+	idx2 := y2*width + x2
+	if binary[idx1] == binary[idx2] {
+		return 0, 0
+	}
+	return localClusterPenalty(binary, target, width, height, opts, []dbsPixelChange{
+		{x: x1, y: y1, newVal: binary[idx2]},
+		{x: x2, y: y2, newVal: binary[idx1]},
+	})
+}
+
+func localClusterPenalty(binary, target []uint8, width, height int, opts DBSOptions, changes []dbsPixelChange) (float64, float64) {
+	overrides := make(map[int]uint8, len(changes))
+	seen := make(map[uint64]struct{}, len(changes)*8)
+	for _, change := range changes {
+		overrides[change.y*width+change.x] = change.newVal
+	}
+	var before, after float64
+	for _, change := range changes {
+		idx := change.y*width + change.x
+		for dy := -1; dy <= 1; dy++ {
+			for dx := -1; dx <= 1; dx++ {
+				if dx == 0 && dy == 0 {
+					continue
+				}
+				nx := change.x + dx
+				ny := change.y + dy
+				if nx < 0 || ny < 0 || nx >= width || ny >= height {
+					continue
+				}
+				nidx := ny*width + nx
+				key := dbsEdgeKey(idx, nidx)
+				if _, ok := seen[key]; ok {
+					continue
+				}
+				seen[key] = struct{}{}
+				diagonalScale := 1.0
+				if dx != 0 && dy != 0 {
+					diagonalScale = 0.70710678118
+				}
+				weight := clusterEdgeWeight(target, idx, nidx, opts) * diagonalScale
+				oldA := binary[idx]
+				oldB := binary[nidx]
+				newA := oldA
+				if v, ok := overrides[idx]; ok {
+					newA = v
+				}
+				newB := oldB
+				if v, ok := overrides[nidx]; ok {
+					newB = v
+				}
+				if oldA != oldB {
+					before += weight
+				}
+				if newA != newB {
+					after += weight
+				}
+			}
+		}
+	}
+	return before, after
+}
+
+func fullClusterPenalty(binary, target []uint8, width, height int, opts DBSOptions) float64 {
+	if opts.ClusterStrength <= 0 {
+		return 0
+	}
+	var penalty float64
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			idx := y*width + x
+			if x+1 < width {
+				ridx := y*width + x + 1
+				if binary[idx] != binary[ridx] {
+					penalty += clusterEdgeWeight(target, idx, ridx, opts)
+				}
+			}
+			if y+1 < height {
+				didx := (y+1)*width + x
+				if binary[idx] != binary[didx] {
+					penalty += clusterEdgeWeight(target, idx, didx, opts)
+				}
+			}
+			if x+1 < width && y+1 < height {
+				dridx := (y+1)*width + x + 1
+				if binary[idx] != binary[dridx] {
+					penalty += clusterEdgeWeight(target, idx, dridx, opts) * 0.70710678118
+				}
+			}
+		}
+	}
+	return penalty
+}
+
+func clusterEdgeWeight(target []uint8, idxA, idxB int, opts DBSOptions) float64 {
+	weight := float64(opts.ClusterStrength)
+	if !opts.ClusterToneAware {
+		return weight
+	}
+	mid := 0.5 * (midtoneWeight(target[idxA]) + midtoneWeight(target[idxB]))
+	return weight * (0.35 + 0.65*mid)
+}
+
+func midtoneWeight(v uint8) float64 {
+	value := float64(v) / 255.0
+	distance := value - 0.5
+	weight := 1.0 - 2.0*absFloat64(distance)
+	if weight < 0 {
+		return 0
+	}
+	return weight
+}
+
+func dbsEdgeKey(a, b int) uint64 {
+	if a > b {
+		a, b = b, a
+	}
+	return (uint64(a) << 32) | uint64(uint32(b))
+}
+
 func dbsPixelDelta(original uint8) float32 {
 	if original == 0 {
 		return 1.0
@@ -563,6 +742,13 @@ func maxDBSInt(a, b int) int {
 }
 
 func absDBSInt(v int) int {
+	if v < 0 {
+		return -v
+	}
+	return v
+}
+
+func absFloat64(v float64) float64 {
 	if v < 0 {
 		return -v
 	}

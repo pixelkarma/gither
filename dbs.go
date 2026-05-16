@@ -14,6 +14,7 @@ const (
 	DBSSeedThreshold = engine.DBSSeedThreshold
 	DBSSeedBayer     = engine.DBSSeedBayer
 	DBSSeedFloyd     = engine.DBSSeedFloyd
+	DBSSeedCluster16 = engine.DBSSeedCluster16
 
 	DBSMoveFlip   = engine.DBSMoveFlip
 	DBSMoveSwap   = engine.DBSMoveSwap
@@ -33,4 +34,8 @@ const (
 
 func DirectBinarySearch(img *Image, opts DBSOptions) error {
 	return engine.DirectBinarySearch(img, opts)
+}
+
+func ClusteredDBS(img *Image, opts DBSOptions) error {
+	return engine.ClusteredDBS(img, opts)
 }

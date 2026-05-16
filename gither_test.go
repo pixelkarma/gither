@@ -470,6 +470,58 @@ func TestDBSReportPopulated(t *testing.T) {
 	}
 }
 
+func TestClusteredDBSDeterministic(t *testing.T) {
+	imgA, _ := NewPackedImage(grayRamp(16, 16), 16, 16, Gray8)
+	imgB, _ := NewPackedImage(grayRamp(16, 16), 16, 16, Gray8)
+	opts := DBSOptions{
+		Passes:           1,
+		Threshold:        127,
+		MoveMode:         DBSMoveHybrid,
+		Neighborhood:     1,
+		Metric:           DBSMetricBalanced,
+		ClusterStrength:  0.18,
+		ClusterToneAware: true,
+		ScanOrder:        DBSScanSerpentine,
+		RandomSeed:       7,
+	}
+	if err := ClusteredDBS(imgA, opts); err != nil {
+		t.Fatal(err)
+	}
+	if err := ClusteredDBS(imgB, opts); err != nil {
+		t.Fatal(err)
+	}
+	if hashBytes(imgA.Pix) != hashBytes(imgB.Pix) {
+		t.Fatal("clustered DBS should be deterministic")
+	}
+}
+
+func TestClusteredDBSDiffersFromDispersed(t *testing.T) {
+	src := grayRamp(24, 24)
+	dispersed, _ := NewPackedImage(append([]uint8(nil), src...), 24, 24, Gray8)
+	clustered, _ := NewPackedImage(append([]uint8(nil), src...), 24, 24, Gray8)
+	opts := DBSOptions{
+		Passes:       1,
+		Threshold:    127,
+		MoveMode:     DBSMoveHybrid,
+		Neighborhood: 1,
+		Metric:       DBSMetricBalanced,
+		ScanOrder:    DBSScanSerpentine,
+		RandomSeed:   7,
+	}
+	if err := DirectBinarySearch(dispersed, opts); err != nil {
+		t.Fatal(err)
+	}
+	clusteredOpts := opts
+	clusteredOpts.ClusterStrength = 0.18
+	clusteredOpts.ClusterToneAware = true
+	if err := ClusteredDBS(clustered, clusteredOpts); err != nil {
+		t.Fatal(err)
+	}
+	if hashBytes(dispersed.Pix) == hashBytes(clustered.Pix) {
+		t.Fatal("clustered DBS should differ from dispersed DBS")
+	}
+}
+
 func TestVariableDiffusionPreservesRGBAAlpha(t *testing.T) {
 	pix := rgbaGradient(12, 12)
 	alpha := make([]uint8, 12*12)
@@ -558,6 +610,23 @@ func TestFixtureAlgorithmsDeterministic(t *testing.T) {
 				})
 			},
 			hash: 7225122755161863901,
+		},
+		{
+			name: "clustered-dbs",
+			run: func(img *Image) error {
+				return ClusteredDBS(img, DBSOptions{
+					Passes:           1,
+					Threshold:        127,
+					MoveMode:         DBSMoveHybrid,
+					Neighborhood:     1,
+					Metric:           DBSMetricBalanced,
+					ScanOrder:        DBSScanSerpentine,
+					RandomSeed:       7,
+					ClusterStrength:  0.18,
+					ClusterToneAware: true,
+				})
+			},
+			hash: 10849702519006246172,
 		},
 	}
 	for _, tc := range cases {

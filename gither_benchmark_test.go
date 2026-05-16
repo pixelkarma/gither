@@ -99,6 +99,19 @@ func BenchmarkAlgorithmsFixtureCat(b *testing.B) {
 				Metric:       DBSMetricPerceptual,
 			})
 		}},
+		{name: "clustered-dbs", run: func(img *Image) error {
+			return ClusteredDBS(img, DBSOptions{
+				Passes:           1,
+				Threshold:        127,
+				MoveMode:         DBSMoveHybrid,
+				Neighborhood:     1,
+				Metric:           DBSMetricBalanced,
+				ScanOrder:        DBSScanSerpentine,
+				RandomSeed:       7,
+				ClusterStrength:  0.18,
+				ClusterToneAware: true,
+			})
+		}},
 	}
 	for _, bc := range cases {
 		b.Run(bc.name, func(b *testing.B) {
