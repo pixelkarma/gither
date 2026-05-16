@@ -5,9 +5,9 @@ import (
 	"runtime"
 	"sync"
 
-	"gither/internal/core"
-	"gither/internal/maps"
-	"gither/internal/mathx"
+	"github.com/pixelkarma/gither/internal/core"
+	"github.com/pixelkarma/gither/internal/maps"
+	"github.com/pixelkarma/gither/internal/mathx"
 )
 
 type mixingPlan struct {

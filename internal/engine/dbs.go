@@ -3,10 +3,10 @@ package engine
 import (
 	"math/rand"
 
-	"gither/internal/core"
-	"gither/internal/kernels"
-	"gither/internal/maps"
-	"gither/internal/mathx"
+	"github.com/pixelkarma/gither/internal/core"
+	"github.com/pixelkarma/gither/internal/kernels"
+	"github.com/pixelkarma/gither/internal/maps"
+	"github.com/pixelkarma/gither/internal/mathx"
 )
 
 type DBSSeed string

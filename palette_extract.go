@@ -1,6 +1,6 @@
 package gither
 
-import "gither/internal/palettex"
+import "github.com/pixelkarma/gither/internal/palettex"
 
 type PaletteExtractMethod = palettex.Method
 type PaletteSortMode = palettex.SortMode

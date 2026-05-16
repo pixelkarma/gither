@@ -1,8 +1,8 @@
 package gither
 
 import (
-	"gither/internal/engine"
-	"gither/internal/maps"
+	"github.com/pixelkarma/gither/internal/engine"
+	"github.com/pixelkarma/gither/internal/maps"
 )
 
 func DotDiffusion8x8(img *Image, opts Options) error {

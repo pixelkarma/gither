@@ -3,9 +3,43 @@ package stdimage
 import (
 	"image"
 	"image/color"
+	"image/jpeg"
+	"image/png"
+	"os"
+	"path/filepath"
+	"strings"
 
-	"gither"
+	"github.com/pixelkarma/gither"
 )
+
+func LoadPath(path string) (*gither.Image, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	img, _, err := image.Decode(file)
+	if err != nil {
+		return nil, err
+	}
+	return FromImage(img)
+}
+
+func SavePath(path string, img image.Image, jpegQuality int) error {
+	file, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".jpg", ".jpeg":
+		return jpeg.Encode(file, img, &jpeg.Options{Quality: jpegQuality})
+	default:
+		return png.Encode(file, img)
+	}
+}
 
 func FromImage(src image.Image) (*gither.Image, error) {
 	bounds := src.Bounds()

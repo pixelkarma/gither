@@ -1,6 +1,6 @@
 package gither
 
-import "gither/internal/core"
+import "github.com/pixelkarma/gither/internal/core"
 
 type QuantizeKind = core.QuantizeKind
 type Quantizer = core.Quantizer

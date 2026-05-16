@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"gither"
-	"gither/adapters/stdimage"
+	"github.com/pixelkarma/gither"
+	"github.com/pixelkarma/gither/adapters/stdimage"
 )
 
 type config struct {
@@ -96,12 +96,13 @@ func parseFlags() config {
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "Usage: gither -in input.png -out output.png [options]\n\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "Algorithms:\n")
-		fmt.Fprintf(flag.CommandLine.Output(), "  ordered: bayer-2x2, bayer-4x4, bayer-8x8, bayer-16x16, adaptive-bayer-8x8, adaptive-bayer-16x16, cluster-dot-4x4, cluster-dot-8x8, cluster-dot-16x16, stochastic-cluster-dot-16x16, polyomino-16x16, space-filling-16x16, space-filling-morton-16x16, space-filling-serpentine-16x16, void-and-cluster-64x64, blue-noise-multitone-64x64, blue-noise-soft-64x64, blue-noise-hard-64x64, dot-diffusion-8x8, dot-diffusion-diagonal-8x8, custom-ordered\n")
-		fmt.Fprintf(flag.CommandLine.Output(), "  palette-ordered: yliluoma-1, yliluoma-2, yliluoma-3\n")
-		fmt.Fprintf(flag.CommandLine.Output(), "  diffusion: floyd-steinberg, false-floyd-steinberg, jjn, stucki, burkes, sierra, two-row-sierra, sierra-lite, stevenson-arce, atkinson\n")
-		fmt.Fprintf(flag.CommandLine.Output(), "  variable diffusion: ostromoukhov, zhou-fang, balanced-variable, balanced-variable-thresholded, smooth-variable, punchy-variable\n")
-		fmt.Fprintf(flag.CommandLine.Output(), "  stochastic: threshold, random\n")
-		fmt.Fprintf(flag.CommandLine.Output(), "  advanced: riemersma, am-fm-hybrid-64x64, clustered-am-fm-64x64, dbs, clustered-dbs, multilevel-dbs, color-dbs\n\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "  stable ordered: bayer-2x2, bayer-4x4, bayer-8x8, bayer-16x16, cluster-dot-4x4, cluster-dot-8x8, cluster-dot-16x16, custom-ordered\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "  stable palette-ordered: yliluoma-1, yliluoma-2, yliluoma-3\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "  stable diffusion: floyd-steinberg, false-floyd-steinberg, jjn, stucki, burkes, sierra, two-row-sierra, sierra-lite, stevenson-arce, atkinson\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "  stable stochastic/path: threshold, random, riemersma\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "  stable DBS: dbs, clustered-dbs, multilevel-dbs, color-dbs\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "  experimental ordered/halftone: adaptive-bayer-8x8, adaptive-bayer-16x16, stochastic-cluster-dot-16x16, polyomino-16x16, space-filling-16x16, space-filling-morton-16x16, space-filling-serpentine-16x16, void-and-cluster-64x64, blue-noise-multitone-64x64, blue-noise-soft-64x64, blue-noise-hard-64x64, dot-diffusion-8x8, dot-diffusion-diagonal-8x8, am-fm-hybrid-64x64, clustered-am-fm-64x64\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "  experimental variable diffusion: ostromoukhov, zhou-fang, balanced-variable, balanced-variable-thresholded, smooth-variable, punchy-variable\n\n")
 		flag.PrintDefaults()
 	}
 	flag.Parse()

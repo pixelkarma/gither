@@ -1,6 +1,6 @@
 package gither
 
-import "gither/internal/engine"
+import "github.com/pixelkarma/gither/internal/engine"
 
 type VariableAnchor = engine.VariableAnchor
 type VariableCurve = engine.VariableCurve

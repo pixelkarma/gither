@@ -3,7 +3,7 @@ package palettex
 import (
 	"sort"
 
-	"gither/internal/core"
+	"github.com/pixelkarma/gither/internal/core"
 )
 
 type bucket struct {

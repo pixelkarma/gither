@@ -1,8 +1,8 @@
 package engine
 
 import (
-	"gither/internal/core"
-	"gither/internal/mathx"
+	"github.com/pixelkarma/gither/internal/core"
+	"github.com/pixelkarma/gither/internal/mathx"
 )
 
 type OrderedMap struct {

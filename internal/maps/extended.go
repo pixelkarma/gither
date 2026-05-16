@@ -1,6 +1,6 @@
 package maps
 
-import "gither/internal/mathx"
+import "github.com/pixelkarma/gither/internal/mathx"
 
 func GenerateStochasticCluster16x16(seed uint64) []uint16 {
 	out := GenerateClusterDot16x16()

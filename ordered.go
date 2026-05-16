@@ -1,9 +1,9 @@
 package gither
 
 import (
-	"gither/internal/core"
-	"gither/internal/engine"
-	"gither/internal/maps"
+	"github.com/pixelkarma/gither/internal/core"
+	"github.com/pixelkarma/gither/internal/engine"
+	"github.com/pixelkarma/gither/internal/maps"
 )
 
 type OrderedMap = engine.OrderedMap

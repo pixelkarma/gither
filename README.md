@@ -1,69 +1,79 @@
 # gither
 
-`gither` is a Go image dithering library and CLI with a broad algorithm surface:
+`gither` is a Go dithering toolkit with two equally important surfaces:
 
-- ordered dithers
-- diffusion dithers
-- halftone variants
-- Yliluoma palette methods
-- variable diffusion
-- DBS family:
-  - `dbs`
-  - `clustered-dbs`
-  - `multilevel-dbs`
-  - `color-dbs`
+- a CLI for batch image conversion
+- a Go library for embedding dithering directly into your own code
 
-The DBS family is now complete as a maintained major surface in this repo:
+The CLI is the front door. The goal is to make `gither` a serious option when you want broad dithering coverage from a single binary, while the library stays clean enough to use as the Go-native core underneath.
 
-- binary grayscale DBS
-- clustered DBS
-- multilevel grayscale DBS
-- palette-index color DBS
-- schedule presets
-- fixture regression coverage
-- dedicated benchmark tooling
+Status: `alpha`
 
-## Build
+- module path: [`github.com/pixelkarma/gither`](https://github.com/pixelkarma/gither)
+- installable CLI: `go install github.com/pixelkarma/gither/cmd/gither@latest`
+- license: [The Unlicense](/Users/admin/Documents/dither/gither/LICENSE:1)
+
+## Why gither
+
+- broad algorithm coverage across ordered, diffusion, halftone, Yliluoma, variable diffusion, and DBS families
+- usable as both a CLI and a library
+- auto-palette and explicit-palette workflows
+- dedicated DBS surface, including clustered, multilevel, and palette-index color DBS
+- release automation for prebuilt binaries through GitHub Releases
+
+## Install
+
+CLI:
 
 ```bash
-cd /Users/admin/Documents/dither/gither
+go install github.com/pixelkarma/gither/cmd/gither@latest
+```
+
+Library:
+
+```bash
+go get github.com/pixelkarma/gither
+```
+
+Build from source:
+
+```bash
+git clone https://github.com/pixelkarma/gither.git
+cd gither
 go build ./cmd/gither
 ```
 
 ## CLI Quick Start
 
+Basic diffusion:
+
 ```bash
-go run ./cmd/gither \
-  -in /Users/admin/Documents/dither/gither/images/cat.png \
-  -out /Users/admin/Documents/dither/gither/examples-out/gither-floyd.png \
+gither \
+  -in ./images/test.png \
+  -out ./examples-out/gither-floyd.png \
   -algorithm floyd-steinberg \
   -quantizer rgb-levels \
   -levels 4
 ```
 
-Palette workflow:
+Auto-palette ordered dither:
 
 ```bash
-go run ./cmd/gither \
-  -in /Users/admin/Documents/dither/gither/images/cat.png \
-  -out /Users/admin/Documents/dither/gither/examples-out/gither-palette.png \
+gither \
+  -in ./images/test.png \
+  -out ./examples-out/gither-cluster-dot.png \
   -algorithm cluster-dot-8x8 \
   -quantizer palette \
   -palette auto \
   -palette-colors 6
 ```
 
-## DBS Family
-
-The DBS family is a separate optimization-based surface. These modes are slower than
-ordered or diffusion dithers, but they expose richer quality tradeoffs.
-
-### Binary DBS
+DBS preview:
 
 ```bash
-go run ./cmd/gither \
-  -in /Users/admin/Documents/dither/gither/images/cat.png \
-  -out /Users/admin/Documents/dither/gither/examples-out/gither-dbs-preview.png \
+gither \
+  -in ./images/test.png \
+  -out ./examples-out/gither-dbs-preview.png \
   -algorithm dbs \
   -quantizer gray-levels \
   -levels 2 \
@@ -71,109 +81,102 @@ go run ./cmd/gither \
   -verbose
 ```
 
-### Clustered DBS
-
-```bash
-go run ./cmd/gither \
-  -in /Users/admin/Documents/dither/gither/images/cat.png \
-  -out /Users/admin/Documents/dither/gither/examples-out/gither-clustered-dbs.png \
-  -algorithm clustered-dbs \
-  -quantizer gray-levels \
-  -levels 2 \
-  -dbs-schedule balanced \
-  -dbs-cluster-strength 0.18 \
-  -verbose
-```
-
-### Multilevel DBS
-
-```bash
-go run ./cmd/gither \
-  -in /Users/admin/Documents/dither/gither/images/cat.png \
-  -out /Users/admin/Documents/dither/gither/examples-out/gither-multilevel-dbs.png \
-  -algorithm multilevel-dbs \
-  -quantizer gray-levels \
-  -levels 4 \
-  -dbs-schedule balanced \
-  -verbose
-```
-
-### Color DBS
-
-`color-dbs` is palette-index DBS. It requires `-quantizer palette`.
-
-```bash
-go run ./cmd/gither \
-  -in /Users/admin/Documents/dither/gither/images/cat.png \
-  -out /Users/admin/Documents/dither/gither/examples-out/gither-color-dbs.png \
-  -algorithm color-dbs \
-  -quantizer palette \
-  -palette auto \
-  -palette-colors 6 \
-  -dbs-schedule balanced \
-  -verbose
-```
-
-### DBS Controls
-
-- `-dbs-seed threshold|bayer|floyd-steinberg|cluster-dot-16x16`
-- `-dbs-move flip|swap|hybrid`
-- `-dbs-metric fast|balanced|perceptual`
-- `-dbs-scan raster|serpentine|random`
-- `-dbs-radius-policy fixed|expand`
-- `-dbs-passes N`
-- `-dbs-max-no-improve N`
-- `-dbs-restarts N`
-- `-dbs-cluster-strength X`
-- `-dbs-cluster-tone-aware`
-
-### DBS Schedules
-
-- `preview`: fast binary DBS
-- `balanced`: practical default
-- `hq`: offline-quality preset
-- `custom`: use explicit DBS flags as provided
-
-### Verbose Stats
-
-`-verbose` prints timing and DBS convergence fields such as:
-
-- passes run
-- accepted move count
-- flip count
-- swap count
-- restart count
-
-## Example Scripts
-
-Render the full algorithm matrix:
+Generate the full example matrix:
 
 ```bash
 ./scripts/render_examples.sh
 ```
 
-Both example scripts create `examples-out` if needed and clear existing `.png`, `.jpg`, and `.jpeg` files before rendering.
-
-Render only the DBS family:
+Generate only DBS outputs:
 
 ```bash
 ./scripts/render_dbs_examples.sh
 ```
 
+Both scripts create [examples-out](/Users/admin/Documents/dither/gither/examples-out:1) if needed and clear old image outputs before rendering.
+
+## Library Quick Start
+
+```go
+package main
+
+import (
+	"github.com/pixelkarma/gither"
+	"github.com/pixelkarma/gither/adapters/stdimage"
+)
+
+func main() {
+	img, err := stdimage.LoadPath("images/test.png")
+	if err != nil {
+		panic(err)
+	}
+
+	if err := gither.FloydSteinberg(img, gither.Options{
+		Quantizer: gither.RGBLevels(4),
+	}); err != nil {
+		panic(err)
+	}
+
+	if err := stdimage.SavePath("out.png", stdimage.ToImage(img), 95); err != nil {
+		panic(err)
+	}
+}
+```
+
+More library notes live in:
+
+- [docs/library.md](/Users/admin/Documents/dither/gither/docs/library.md:1)
+- [docs/algorithms.md](/Users/admin/Documents/dither/gither/docs/algorithms.md:1)
+- [docs/releases.md](/Users/admin/Documents/dither/gither/docs/releases.md:1)
+
+## Stable vs Experimental
+
+This project is alpha. The CLI and library are usable now, but names and APIs can still move before `v1`.
+
+Current intent:
+
+- stable alpha:
+  - Bayer
+  - cluster-dot
+  - Yliluoma
+  - classic diffusion kernels
+  - threshold/random
+  - Riemersma
+  - DBS family
+- experimental alpha:
+  - adaptive ordered
+  - polyomino
+  - space-filling variants
+  - void-and-cluster
+  - blue-noise variants
+  - dot-diffusion
+  - AM/FM hybrids
+  - variable diffusion family
+
+`gither -h` reflects the same split.
+
 ## Benchmarks
 
-Run the full benchmark suite:
+Run the full suite locally:
 
 ```bash
 go test -run '^$' -bench . -benchmem ./...
 ```
 
-Useful focused DBS benches:
+For focused DBS benchmarking:
 
 ```bash
-go test -run '^$' -bench 'BenchmarkAlgorithmsFixtureCat/(dbs-fast|dbs-balanced|dbs-perceptual|clustered-dbs|multilevel-dbs|color-dbs)$' -benchmem -benchtime=1x
-go test -run '^$' -bench 'BenchmarkDBSSchedulesFixtureCat/(preview|balanced|hq)$' -benchmem -benchtime=1x
 ./scripts/benchmark_dbs.sh
 ```
 
-See [DBS_VERIFICATION.md](/Users/admin/Documents/dither/gither/DBS_VERIFICATION.md:1) for the dedicated fixture suite and comparison benchmark program.
+## Releases
+
+Tagged releases are built automatically with GoReleaser and published to GitHub Releases.
+
+- release automation: [.goreleaser.yaml](/Users/admin/Documents/dither/gither/.goreleaser.yaml:1)
+- CI: [.github/workflows/ci.yml](/Users/admin/Documents/dither/gither/.github/workflows/ci.yml:1)
+- tagged releases: [.github/workflows/release.yml](/Users/admin/Documents/dither/gither/.github/workflows/release.yml:1)
+
+## Samples
+
+Sample source images are kept in [images](/Users/admin/Documents/dither/gither/images:1) so the scripts and benchmarks have fixture inputs. Generated outputs remain out of git.

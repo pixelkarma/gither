@@ -1,8 +1,8 @@
 package gither
 
 import (
-	"gither/internal/engine"
-	"gither/internal/kernels"
+	"github.com/pixelkarma/gither/internal/engine"
+	"github.com/pixelkarma/gither/internal/kernels"
 )
 
 func FloydSteinberg(img *Image, opts Options) error {

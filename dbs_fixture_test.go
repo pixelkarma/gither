@@ -4,7 +4,7 @@ import (
 	"hash/fnv"
 	"testing"
 
-	"gither/internal/mathx"
+	"github.com/pixelkarma/gither/internal/mathx"
 )
 
 func hashFixtureBytes(b []byte) uint64 {

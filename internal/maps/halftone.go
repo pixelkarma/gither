@@ -4,7 +4,7 @@ import (
 	"math"
 	"sort"
 
-	"gither/internal/mathx"
+	"github.com/pixelkarma/gither/internal/mathx"
 )
 
 type BlueNoiseProfile struct {

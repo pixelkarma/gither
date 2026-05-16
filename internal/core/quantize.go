@@ -1,6 +1,6 @@
 package core
 
-import "gither/internal/mathx"
+import "github.com/pixelkarma/gither/internal/mathx"
 
 type QuantizeKind uint8
 

@@ -1,6 +1,6 @@
 package gither
 
-import "gither/internal/engine"
+import "github.com/pixelkarma/gither/internal/engine"
 
 type DBSSeed = engine.DBSSeed
 type DBSMoveMode = engine.DBSMoveMode

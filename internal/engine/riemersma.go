@@ -3,8 +3,8 @@ package engine
 import (
 	"sync"
 
-	"gither/internal/core"
-	"gither/internal/mathx"
+	"github.com/pixelkarma/gither/internal/core"
+	"github.com/pixelkarma/gither/internal/mathx"
 )
 
 var historyWeights = [16]float32{1, 1, 2, 2, 3, 4, 5, 6, 8, 10, 12, 14, 16, 19, 23, 27}

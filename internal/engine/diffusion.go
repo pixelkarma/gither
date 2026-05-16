@@ -1,9 +1,9 @@
 package engine
 
 import (
-	"gither/internal/core"
-	"gither/internal/kernels"
-	"gither/internal/mathx"
+	"github.com/pixelkarma/gither/internal/core"
+	"github.com/pixelkarma/gither/internal/kernels"
+	"github.com/pixelkarma/gither/internal/mathx"
 )
 
 func ApplyDiffusion(img *core.Image, opts core.Options, kernel kernels.ErrorKernel) error {

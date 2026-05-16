@@ -1,5 +1,5 @@
 package gither
 
-import "gither/internal/core"
+import "github.com/pixelkarma/gither/internal/core"
 
 type Options = core.Options
