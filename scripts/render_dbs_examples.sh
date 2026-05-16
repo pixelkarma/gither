@@ -38,11 +38,11 @@ run_gither() {
   "${cmd[@]}"
 }
 
-run_gither "cat-dbs-preview-gray2.png" -algorithm dbs -quantizer gray-levels -levels 2 -dbs-schedule preview
-run_gither "cat-dbs-balanced-gray2.png" -algorithm dbs -quantizer gray-levels -levels 2 -dbs-schedule balanced
-run_gither "cat-dbs-hq-gray2.png" -algorithm dbs -quantizer gray-levels -levels 2 -dbs-schedule hq
-run_gither "cat-clustered-dbs-gray2.png" -algorithm clustered-dbs -quantizer gray-levels -levels 2 -dbs-schedule balanced -dbs-cluster-strength 0.18
-run_gither "cat-multilevel-dbs-gray4.png" -algorithm multilevel-dbs -quantizer gray-levels -levels 4 -dbs-schedule balanced
-run_gither "cat-color-dbs-auto6.png" -algorithm color-dbs -quantizer palette -palette auto -palette-colors 6 -dbs-schedule balanced
+run_gither "gither-dbs-preview-gray2.png" -algorithm dbs -quantizer gray-levels -levels 2 -dbs-schedule preview
+run_gither "gither-dbs-balanced-gray2.png" -algorithm dbs -quantizer gray-levels -levels 2 -dbs-schedule balanced
+run_gither "gither-dbs-hq-gray2.png" -algorithm dbs -quantizer gray-levels -levels 2 -dbs-schedule hq
+run_gither "gither-clustered-dbs-gray2.png" -algorithm clustered-dbs -quantizer gray-levels -levels 2 -dbs-schedule balanced -dbs-cluster-strength 0.18
+run_gither "gither-multilevel-dbs-gray4.png" -algorithm multilevel-dbs -quantizer gray-levels -levels 4 -dbs-schedule balanced
+run_gither "gither-color-dbs-auto6.png" -algorithm color-dbs -quantizer palette -palette auto -palette-colors 6 -dbs-schedule balanced
 
 echo "wrote DBS outputs to $OUTPUT_DIR"

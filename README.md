@@ -35,7 +35,7 @@ go build ./cmd/gither
 ```bash
 go run ./cmd/gither \
   -in /Users/admin/Documents/dither/gither/images/cat.png \
-  -out /Users/admin/Documents/dither/gither/examples-out/cat-floyd.png \
+  -out /Users/admin/Documents/dither/gither/examples-out/gither-floyd.png \
   -algorithm floyd-steinberg \
   -quantizer rgb-levels \
   -levels 4
@@ -46,7 +46,7 @@ Palette workflow:
 ```bash
 go run ./cmd/gither \
   -in /Users/admin/Documents/dither/gither/images/cat.png \
-  -out /Users/admin/Documents/dither/gither/examples-out/cat-palette.png \
+  -out /Users/admin/Documents/dither/gither/examples-out/gither-palette.png \
   -algorithm cluster-dot-8x8 \
   -quantizer palette \
   -palette auto \
@@ -63,7 +63,7 @@ ordered or diffusion dithers, but they expose richer quality tradeoffs.
 ```bash
 go run ./cmd/gither \
   -in /Users/admin/Documents/dither/gither/images/cat.png \
-  -out /Users/admin/Documents/dither/gither/examples-out/cat-dbs-preview.png \
+  -out /Users/admin/Documents/dither/gither/examples-out/gither-dbs-preview.png \
   -algorithm dbs \
   -quantizer gray-levels \
   -levels 2 \
@@ -76,7 +76,7 @@ go run ./cmd/gither \
 ```bash
 go run ./cmd/gither \
   -in /Users/admin/Documents/dither/gither/images/cat.png \
-  -out /Users/admin/Documents/dither/gither/examples-out/cat-clustered-dbs.png \
+  -out /Users/admin/Documents/dither/gither/examples-out/gither-clustered-dbs.png \
   -algorithm clustered-dbs \
   -quantizer gray-levels \
   -levels 2 \
@@ -90,7 +90,7 @@ go run ./cmd/gither \
 ```bash
 go run ./cmd/gither \
   -in /Users/admin/Documents/dither/gither/images/cat.png \
-  -out /Users/admin/Documents/dither/gither/examples-out/cat-multilevel-dbs.png \
+  -out /Users/admin/Documents/dither/gither/examples-out/gither-multilevel-dbs.png \
   -algorithm multilevel-dbs \
   -quantizer gray-levels \
   -levels 4 \
@@ -105,7 +105,7 @@ go run ./cmd/gither \
 ```bash
 go run ./cmd/gither \
   -in /Users/admin/Documents/dither/gither/images/cat.png \
-  -out /Users/admin/Documents/dither/gither/examples-out/cat-color-dbs.png \
+  -out /Users/admin/Documents/dither/gither/examples-out/gither-color-dbs.png \
   -algorithm color-dbs \
   -quantizer palette \
   -palette auto \
