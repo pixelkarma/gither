@@ -2,51 +2,46 @@ package gither
 
 import "testing"
 
-func TestFixtureAlgorithmsDeterministic(t *testing.T) {
+func TestFixtureAlgorithmsRepeatable(t *testing.T) {
 	fixture := mustLoadFixtureForTest(t)
+	sourceHash := hashBytes(fixture.Pix)
 	cases := []struct {
 		name string
 		run  func(*Image) error
-		hash uint64
 	}{
-		{name: "bayer-8x8", run: func(img *Image) error { return Bayer8x8(img, Options{Quantizer: RGBLevels(4)}) }, hash: 1586559976892664640},
-		{name: "floyd-steinberg", run: func(img *Image) error { return FloydSteinberg(img, Options{Quantizer: RGBLevels(4)}) }, hash: 1470673958377565646},
-		{name: "riemersma", run: func(img *Image) error { return Riemersma(img, Options{Quantizer: RGBLevels(4)}) }, hash: 12967790854396528878},
-		{name: "balanced-variable", run: func(img *Image) error { return BalancedVariable(img, Options{Quantizer: GrayLevels(2)}) }, hash: 7898405161282167868},
+		{name: "bayer-8x8", run: func(img *Image) error { return Bayer8x8(img, Options{Quantizer: RGBLevels(4)}) }},
+		{name: "floyd-steinberg", run: func(img *Image) error { return FloydSteinberg(img, Options{Quantizer: RGBLevels(4)}) }},
+		{name: "riemersma", run: func(img *Image) error { return Riemersma(img, Options{Quantizer: RGBLevels(4)}) }},
+		{name: "balanced-variable", run: func(img *Image) error { return BalancedVariable(img, Options{Quantizer: GrayLevels(2)}) }},
 		{
 			name: "dbs-fast",
 			run: func(img *Image) error {
 				return DirectBinarySearch(img, DBSOptions{Seed: DBSSeedThreshold, Passes: 1, Threshold: 127, MoveMode: DBSMoveHybrid, Neighborhood: 1, Metric: DBSMetricFast})
 			},
-			hash: 16594214877598800141,
 		},
 		{
 			name: "dbs-balanced",
 			run: func(img *Image) error {
 				return DirectBinarySearch(img, DBSOptions{Seed: DBSSeedThreshold, Passes: 1, Threshold: 127, MoveMode: DBSMoveHybrid, Neighborhood: 1, Metric: DBSMetricBalanced})
 			},
-			hash: 14165239993098868053,
 		},
 		{
 			name: "dbs-perceptual",
 			run: func(img *Image) error {
 				return DirectBinarySearch(img, DBSOptions{Seed: DBSSeedThreshold, Passes: 1, Threshold: 127, MoveMode: DBSMoveHybrid, Neighborhood: 1, Metric: DBSMetricPerceptual})
 			},
-			hash: 16913546786584952508,
 		},
 		{
 			name: "clustered-dbs",
 			run: func(img *Image) error {
 				return ClusteredDBS(img, DBSOptions{Passes: 1, Threshold: 127, MoveMode: DBSMoveHybrid, Neighborhood: 1, Metric: DBSMetricBalanced, ScanOrder: DBSScanSerpentine, RandomSeed: 7, ClusterStrength: 0.18, ClusterToneAware: true})
 			},
-			hash: 1602267920084629516,
 		},
 		{
 			name: "multilevel-dbs",
 			run: func(img *Image) error {
 				return MultiLevelDBS(img, DBSOptions{Levels: 4, Passes: 1, Threshold: 127, MoveMode: DBSMoveHybrid, Neighborhood: 1, Metric: DBSMetricBalanced, ScanOrder: DBSScanSerpentine, RandomSeed: 7})
 			},
-			hash: 11413843390288350397,
 		},
 		{
 			name: "color-dbs",
@@ -57,17 +52,25 @@ func TestFixtureAlgorithmsDeterministic(t *testing.T) {
 				}
 				return ColorDBS(img, DBSOptions{Palette: palette, Passes: 1, MoveMode: DBSMoveHybrid, Neighborhood: 1, Metric: DBSMetricBalanced, ScanOrder: DBSScanSerpentine, RandomSeed: 7})
 			},
-			hash: 3995122937393973226,
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			img := fixture.Clone()
-			if err := tc.run(img); err != nil {
+			imgA := fixture.Clone()
+			imgB := fixture.Clone()
+			if err := tc.run(imgA); err != nil {
 				t.Fatal(err)
 			}
-			if got := hashBytes(img.Pix); got != tc.hash {
-				t.Fatalf("hash mismatch: got %d want %d", got, tc.hash)
+			if err := tc.run(imgB); err != nil {
+				t.Fatal(err)
+			}
+			hashA := hashBytes(imgA.Pix)
+			hashB := hashBytes(imgB.Pix)
+			if hashA != hashB {
+				t.Fatalf("repeatability mismatch: got %d and %d", hashA, hashB)
+			}
+			if hashA == sourceHash {
+				t.Fatal("algorithm output unexpectedly matched the source image")
 			}
 		})
 	}

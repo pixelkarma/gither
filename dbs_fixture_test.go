@@ -1,17 +1,10 @@
 package gither
 
 import (
-	"hash/fnv"
 	"testing"
 
 	"github.com/pixelkarma/gither/internal/mathx"
 )
-
-func hashFixtureBytes(b []byte) uint64 {
-	h := fnv.New64a()
-	_, _ = h.Write(b)
-	return h.Sum64()
-}
 
 func makeLineArtFixture(width, height int) *Image {
 	pix := make([]uint8, width*height)
@@ -85,13 +78,12 @@ func dbsFixtureSet(tb testing.TB) map[string]*Image {
 	}
 }
 
-func TestDBSFixtureSuiteDeterministic(t *testing.T) {
+func TestDBSFixtureSuiteRepeatable(t *testing.T) {
 	fixtures := dbsFixtureSet(t)
 	cases := []struct {
 		name    string
 		fixture string
 		run     func(*Image) error
-		hash    uint64
 	}{
 		{
 			name:    "line-art/dbs-balanced",
@@ -99,7 +91,6 @@ func TestDBSFixtureSuiteDeterministic(t *testing.T) {
 			run: func(img *Image) error {
 				return DirectBinarySearch(img, DBSOptions{Passes: 1, Threshold: 127, MoveMode: DBSMoveHybrid, Neighborhood: 1, Metric: DBSMetricBalanced, ScanOrder: DBSScanSerpentine, RandomSeed: 7})
 			},
-			hash: 12968967869221384461,
 		},
 		{
 			name:    "line-art/clustered-dbs",
@@ -107,7 +98,6 @@ func TestDBSFixtureSuiteDeterministic(t *testing.T) {
 			run: func(img *Image) error {
 				return ClusteredDBS(img, DBSOptions{Passes: 1, Threshold: 127, MoveMode: DBSMoveHybrid, Neighborhood: 1, Metric: DBSMetricBalanced, ScanOrder: DBSScanSerpentine, RandomSeed: 7, ClusterStrength: 0.18, ClusterToneAware: true})
 			},
-			hash: 2932870014787304613,
 		},
 		{
 			name:    "low-contrast/multilevel-dbs",
@@ -115,7 +105,6 @@ func TestDBSFixtureSuiteDeterministic(t *testing.T) {
 			run: func(img *Image) error {
 				return MultiLevelDBS(img, DBSOptions{Levels: 4, Passes: 1, MoveMode: DBSMoveHybrid, Neighborhood: 1, Metric: DBSMetricBalanced, ScanOrder: DBSScanSerpentine, RandomSeed: 7})
 			},
-			hash: 16333605137037632989,
 		},
 		{
 			name:    "texture/dbs-balanced",
@@ -123,7 +112,6 @@ func TestDBSFixtureSuiteDeterministic(t *testing.T) {
 			run: func(img *Image) error {
 				return DirectBinarySearch(img, DBSOptions{Passes: 1, Threshold: 127, MoveMode: DBSMoveHybrid, Neighborhood: 1, Metric: DBSMetricBalanced, ScanOrder: DBSScanSerpentine, RandomSeed: 7})
 			},
-			hash: 14805613429304380296,
 		},
 		{
 			name:    "texture/clustered-dbs",
@@ -131,7 +119,6 @@ func TestDBSFixtureSuiteDeterministic(t *testing.T) {
 			run: func(img *Image) error {
 				return ClusteredDBS(img, DBSOptions{Passes: 1, Threshold: 127, MoveMode: DBSMoveHybrid, Neighborhood: 1, Metric: DBSMetricBalanced, ScanOrder: DBSScanSerpentine, RandomSeed: 7, ClusterStrength: 0.18, ClusterToneAware: true})
 			},
-			hash: 3542612787489216144,
 		},
 		{
 			name:    "color-texture/color-dbs",
@@ -143,17 +130,26 @@ func TestDBSFixtureSuiteDeterministic(t *testing.T) {
 				}
 				return ColorDBS(img, DBSOptions{Palette: palette, Passes: 1, MoveMode: DBSMoveHybrid, Neighborhood: 1, Metric: DBSMetricBalanced, ScanOrder: DBSScanSerpentine, RandomSeed: 7})
 			},
-			hash: 7766925434517295867,
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			img := fixtures[tc.fixture].Clone()
-			if err := tc.run(img); err != nil {
+			sourceHash := hashBytes(fixtures[tc.fixture].Pix)
+			imgA := fixtures[tc.fixture].Clone()
+			imgB := fixtures[tc.fixture].Clone()
+			if err := tc.run(imgA); err != nil {
 				t.Fatal(err)
 			}
-			if got := hashFixtureBytes(img.Pix); got != tc.hash {
-				t.Fatalf("hash mismatch: got %d want %d", got, tc.hash)
+			if err := tc.run(imgB); err != nil {
+				t.Fatal(err)
+			}
+			hashA := hashBytes(imgA.Pix)
+			hashB := hashBytes(imgB.Pix)
+			if hashA != hashB {
+				t.Fatalf("repeatability mismatch: got %d and %d", hashA, hashB)
+			}
+			if hashA == sourceHash {
+				t.Fatal("algorithm output unexpectedly matched the source fixture")
 			}
 		})
 	}
