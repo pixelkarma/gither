@@ -750,22 +750,22 @@ func TestFixtureAlgorithmsDeterministic(t *testing.T) {
 		{
 			name: "bayer-8x8",
 			run:  func(img *Image) error { return Bayer8x8(img, Options{Quantizer: RGBLevels(4)}) },
-			hash: 2059834114531819937,
+			hash: 1586559976892664640,
 		},
 		{
 			name: "floyd-steinberg",
 			run:  func(img *Image) error { return FloydSteinberg(img, Options{Quantizer: RGBLevels(4)}) },
-			hash: 16790227691806807573,
+			hash: 1470673958377565646,
 		},
 		{
 			name: "riemersma",
 			run:  func(img *Image) error { return Riemersma(img, Options{Quantizer: RGBLevels(4)}) },
-			hash: 12317244182241967815,
+			hash: 12967790854396528878,
 		},
 		{
 			name: "balanced-variable",
 			run:  func(img *Image) error { return BalancedVariable(img, Options{Quantizer: GrayLevels(2)}) },
-			hash: 4432248508225494701,
+			hash: 7898405161282167868,
 		},
 		{
 			name: "dbs-fast",
@@ -779,7 +779,7 @@ func TestFixtureAlgorithmsDeterministic(t *testing.T) {
 					Metric:       DBSMetricFast,
 				})
 			},
-			hash: 14760988332519077620,
+			hash: 16594214877598800141,
 		},
 		{
 			name: "dbs-balanced",
@@ -793,7 +793,7 @@ func TestFixtureAlgorithmsDeterministic(t *testing.T) {
 					Metric:       DBSMetricBalanced,
 				})
 			},
-			hash: 7371833554584279101,
+			hash: 14165239993098868053,
 		},
 		{
 			name: "dbs-perceptual",
@@ -807,7 +807,7 @@ func TestFixtureAlgorithmsDeterministic(t *testing.T) {
 					Metric:       DBSMetricPerceptual,
 				})
 			},
-			hash: 7225122755161863901,
+			hash: 16913546786584952508,
 		},
 		{
 			name: "clustered-dbs",
@@ -824,7 +824,7 @@ func TestFixtureAlgorithmsDeterministic(t *testing.T) {
 					ClusterToneAware: true,
 				})
 			},
-			hash: 10849702519006246172,
+			hash: 1602267920084629516,
 		},
 		{
 			name: "multilevel-dbs",
@@ -840,7 +840,7 @@ func TestFixtureAlgorithmsDeterministic(t *testing.T) {
 					RandomSeed:   7,
 				})
 			},
-			hash: 10788990793269373098,
+			hash: 11413843390288350397,
 		},
 		{
 			name: "color-dbs",
@@ -863,7 +863,7 @@ func TestFixtureAlgorithmsDeterministic(t *testing.T) {
 					RandomSeed:   7,
 				})
 			},
-			hash: 15234579066110475956,
+			hash: 3995122937393973226,
 		},
 	}
 	for _, tc := range cases {
@@ -907,7 +907,7 @@ func TestPaletteExtractionOptions(t *testing.T) {
 
 func mustLoadFixtureForTest(tb testing.TB) *Image {
 	tb.Helper()
-	path := filepath.Join("/Users/admin/Documents/dither/gither", "images", "cat.png")
+	path := filepath.Join("/Users/admin/Documents/dither/gither", "images", "test.png")
 	file, err := os.Open(path)
 	if err != nil {
 		tb.Fatal(err)

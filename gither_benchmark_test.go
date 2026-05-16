@@ -298,7 +298,7 @@ func BenchmarkPaletteExtractionFixtureCat(b *testing.B) {
 
 func mustLoadFixtureImage(tb testing.TB) *Image {
 	tb.Helper()
-	path := filepath.Join("/Users/admin/Documents/dither/gither", "images", "cat.png")
+	path := filepath.Join("/Users/admin/Documents/dither/gither", "images", "test.png")
 	file, err := os.Open(path)
 	if err != nil {
 		tb.Fatal(err)

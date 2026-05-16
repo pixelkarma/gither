@@ -7,7 +7,7 @@ This file describes the dedicated DBS verification and benchmark program in `git
 DBS verification now covers these fixture classes:
 
 - `photo`
-  - the existing photographic fixture at [images/cat.png](/Users/admin/Documents/dither/gither/images/cat.png:1)
+  - the existing photographic fixture at [images/test.png](/Users/admin/Documents/dither/gither/images/test.png:1)
 - `line-art`
   - high-contrast synthetic strokes and sparse detail
 - `low-contrast`

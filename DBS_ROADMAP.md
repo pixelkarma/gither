@@ -561,6 +561,6 @@ Specifically:
 - create a binary grayscale state representation
 - implement threshold/Bayer/Floyd seeders
 - add a naive but correct flip-only optimizer
-- benchmark it on `images/cat.png`
+- benchmark it on `images/test.png`
 
 That gives a correctness baseline before any serious optimization work begins.
