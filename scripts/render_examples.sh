@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-INPUT_PATH="${1:-$ROOT_DIR/images/cat.png}"
+INPUT_PATH="${1:-$ROOT_DIR/images/test.png}"
 OUTPUT_DIR="${2:-$ROOT_DIR/examples-out}"
 BIN_MODE="${GITHER_RUN_MODE:-run}"
 VERBOSE_FLAG=()
@@ -23,13 +23,19 @@ rm -f "$OUTPUT_DIR"/*.png "$OUTPUT_DIR"/*.jpg "$OUTPUT_DIR"/*.jpeg
 run_gither() {
   local out_name="$1"
   shift
+  local cmd=()
 
   echo "rendering $out_name"
   if [[ "$BIN_MODE" == "bin" ]]; then
-    "$ROOT_DIR/gither" -in "$INPUT_PATH" -out "$OUTPUT_DIR/$out_name" "${VERBOSE_FLAG[@]-}" "$@"
+    cmd=("$ROOT_DIR/gither" -in "$INPUT_PATH" -out "$OUTPUT_DIR/$out_name")
   else
-    go run ./cmd/gither -in "$INPUT_PATH" -out "$OUTPUT_DIR/$out_name" "${VERBOSE_FLAG[@]-}" "$@"
+    cmd=(go run ./cmd/gither -in "$INPUT_PATH" -out "$OUTPUT_DIR/$out_name")
   fi
+  if [[ ${#VERBOSE_FLAG[@]} -gt 0 ]]; then
+    cmd+=("${VERBOSE_FLAG[@]}")
+  fi
+  cmd+=("$@")
+  "${cmd[@]}"
 }
 
 # Ordered families.
