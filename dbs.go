@@ -43,3 +43,7 @@ func ClusteredDBS(img *Image, opts DBSOptions) error {
 func MultiLevelDBS(img *Image, opts DBSOptions) error {
 	return engine.MultiLevelDBS(img, opts)
 }
+
+func ColorDBS(img *Image, opts DBSOptions) error {
+	return engine.ColorDBS(img, opts)
+}

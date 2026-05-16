@@ -124,6 +124,24 @@ func BenchmarkAlgorithmsFixtureCat(b *testing.B) {
 				RandomSeed:   7,
 			})
 		}},
+		{name: "color-dbs", run: func(img *Image) error {
+			return ColorDBS(img, DBSOptions{
+				Palette: Palette{
+					{R: 17, G: 17, B: 17},
+					{R: 248, G: 241, B: 228},
+					{R: 223, G: 109, B: 45},
+					{R: 47, G: 93, B: 98},
+					{R: 92, G: 136, B: 84},
+					{R: 92, G: 72, B: 120},
+				},
+				Passes:       1,
+				MoveMode:     DBSMoveHybrid,
+				Neighborhood: 1,
+				Metric:       DBSMetricBalanced,
+				ScanOrder:    DBSScanSerpentine,
+				RandomSeed:   7,
+			})
+		}},
 	}
 	for _, bc := range cases {
 		b.Run(bc.name, func(b *testing.B) {

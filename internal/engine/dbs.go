@@ -40,6 +40,7 @@ const (
 type DBSOptions struct {
 	Seed             DBSSeed
 	Levels           int
+	Palette          core.Palette
 	Passes           int
 	Threshold        uint8
 	MoveMode         DBSMoveMode
@@ -164,6 +165,53 @@ func MultiLevelDBS(img *core.Image, opts DBSOptions) error {
 		*opts.Report = totalReport
 	}
 	writeGrayToImage(img, bestGray)
+	return nil
+}
+
+func ColorDBS(img *core.Image, opts DBSOptions) error {
+	if err := img.Validate(); err != nil {
+		return err
+	}
+	opts = opts.withDefaults()
+	if err := opts.Palette.Validate(); err != nil {
+		return err
+	}
+	targetR, targetG, targetB := colorPlanes(img)
+	metric := dbsMetricSpecFor(opts.Metric)
+	targetFR := filteredGrayPlane(targetR, img.Width, img.Height, metric)
+	targetFG := filteredGrayPlane(targetG, img.Width, img.Height, metric)
+	targetFB := filteredGrayPlane(targetB, img.Width, img.Height, metric)
+	errorWeights := dbsColorErrorWeights(targetR, targetG, targetB, img.Width, img.Height, metric)
+	indexes := dbsSeedPaletteIndexes(targetR, targetG, targetB, opts.Palette)
+	bestIndexes := append([]uint8(nil), indexes...)
+	bestFR, bestFG, bestFB := filteredPalettePlanes(bestIndexes, opts.Palette, img.Width, img.Height, metric)
+	bestScore := dbsColorScore(bestFR, bestFG, bestFB, targetFR, targetFG, targetFB, errorWeights)
+	totalReport := DBSReport{}
+	for restart := 0; restart <= opts.Restarts; restart++ {
+		working := append([]uint8(nil), indexes...)
+		fr, fg, fb := filteredPalettePlanes(working, opts.Palette, img.Width, img.Height, metric)
+		report := dbsOptimizeColor(working, fr, fg, fb, targetR, targetG, targetB, targetFR, targetFG, targetFB, errorWeights, img.Width, img.Height, opts, metric, restart)
+		score := dbsColorScore(fr, fg, fb, targetFR, targetFG, targetFB, errorWeights)
+		if restart == 0 || score < bestScore {
+			bestScore = score
+			copy(bestIndexes, working)
+			copy(bestFR, fr)
+			copy(bestFG, fg)
+			copy(bestFB, fb)
+		}
+		totalReport.PassesRun += report.PassesRun
+		totalReport.AcceptedMoves += report.AcceptedMoves
+		totalReport.FlipMoves += report.FlipMoves
+		totalReport.SwapMoves += report.SwapMoves
+		if report.LastImprovedPass > 0 {
+			totalReport.LastImprovedPass = report.LastImprovedPass
+		}
+		totalReport.RestartsUsed = restart
+	}
+	if opts.Report != nil {
+		*opts.Report = totalReport
+	}
+	writePaletteToImage(img, bestIndexes, opts.Palette)
 	return nil
 }
 
@@ -426,6 +474,115 @@ func dbsLevelIndex(values []uint8, v uint8) int {
 	return best
 }
 
+func dbsSeedPaletteIndexes(targetR, targetG, targetB []uint8, palette core.Palette) []uint8 {
+	indexes := make([]uint8, len(targetR))
+	for i := range indexes {
+		indexes[i] = uint8(nearestPaletteIndex(palette, targetR[i], targetG[i], targetB[i]))
+	}
+	return indexes
+}
+
+func nearestPaletteIndex(palette core.Palette, r, g, b uint8) int {
+	best := 0
+	bestDist := mathx.RGBDistanceSq(r, g, b, palette[0].R, palette[0].G, palette[0].B)
+	for i := 1; i < len(palette); i++ {
+		c := palette[i]
+		dist := mathx.RGBDistanceSq(r, g, b, c.R, c.G, c.B)
+		if dist < bestDist {
+			best = i
+			bestDist = dist
+		}
+	}
+	return best
+}
+
+func nearestPaletteCandidates(palette core.Palette, r, g, b uint8, limit int) []int {
+	type candidate struct {
+		idx  int
+		dist uint32
+	}
+	best := make([]candidate, 0, limit)
+	for i, c := range palette {
+		dist := mathx.RGBDistanceSq(r, g, b, c.R, c.G, c.B)
+		insertAt := len(best)
+		for j := 0; j < len(best); j++ {
+			if dist < best[j].dist {
+				insertAt = j
+				break
+			}
+		}
+		if insertAt < limit {
+			best = append(best, candidate{})
+			copy(best[insertAt+1:], best[insertAt:])
+			best[insertAt] = candidate{idx: i, dist: dist}
+			if len(best) > limit {
+				best = best[:limit]
+			}
+		} else if len(best) < limit {
+			best = append(best, candidate{idx: i, dist: dist})
+		}
+	}
+	out := make([]int, len(best))
+	for i := range best {
+		out[i] = best[i].idx
+	}
+	return out
+}
+
+func filteredPalettePlanes(indexes []uint8, palette core.Palette, width, height int, metric dbsMetricSpec) ([]float32, []float32, []float32) {
+	r := make([]uint8, len(indexes))
+	g := make([]uint8, len(indexes))
+	b := make([]uint8, len(indexes))
+	for i, idx := range indexes {
+		c := palette[int(idx)]
+		r[i], g[i], b[i] = c.R, c.G, c.B
+	}
+	return filteredGrayPlane(r, width, height, metric), filteredGrayPlane(g, width, height, metric), filteredGrayPlane(b, width, height, metric)
+}
+
+func colorPlanes(img *core.Image) ([]uint8, []uint8, []uint8) {
+	r := make([]uint8, img.Width*img.Height)
+	g := make([]uint8, img.Width*img.Height)
+	b := make([]uint8, img.Width*img.Height)
+	channels := img.ChannelCount()
+	for y := 0; y < img.Height; y++ {
+		row := img.Row(y)
+		for x := 0; x < img.Width; x++ {
+			offset := x * channels
+			switch img.Format {
+			case core.Gray8:
+				v := row[offset]
+				r[y*img.Width+x], g[y*img.Width+x], b[y*img.Width+x] = v, v, v
+			default:
+				r[y*img.Width+x] = row[offset]
+				g[y*img.Width+x] = row[offset+1]
+				b[y*img.Width+x] = row[offset+2]
+			}
+		}
+	}
+	return r, g, b
+}
+
+func dbsColorErrorWeights(targetR, targetG, targetB []uint8, width, height int, metric dbsMetricSpec) []float32 {
+	gray := make([]uint8, len(targetR))
+	for i := range gray {
+		gray[i] = mathx.LumaByte(targetR[i], targetG[i], targetB[i])
+	}
+	return dbsErrorWeights(gray, width, height, metric)
+}
+
+func dbsColorScore(fr, fg, fb, tr, tg, tb, errorWeights []float32) float64 {
+	var score float64
+	for i := range fr {
+		dr := float64(fr[i] - tr[i])
+		dg := float64(fg[i] - tg[i])
+		db := float64(fb[i] - tb[i])
+		weight := float64(errorWeights[i])
+		score += weight * (0.30*dr*dr + 0.59*dg*dg + 0.11*db*db)
+	}
+	return score
+}
+
 func dbsOptimizeMultiLevel(gray []uint8, filtered, targetFiltered, errorWeights []float32, width, height int, opts DBSOptions, metric dbsMetricSpec, levels []uint8, restart int) DBSReport {
 	report := DBSReport{RestartsUsed: restart}
 	noImprovePasses := 0
@@ -462,6 +619,116 @@ func dbsOptimizeMultiLevel(gray []uint8, filtered, targetFiltered, errorWeights 
 		noImprovePasses = 0
 	}
 	return report
+}
+
+func dbsOptimizeColor(indexes []uint8, fr, fg, fb []float32, targetR, targetG, targetB []uint8, targetFR, targetFG, targetFB, errorWeights []float32, width, height int, opts DBSOptions, metric dbsMetricSpec, restart int) DBSReport {
+	report := DBSReport{RestartsUsed: restart}
+	noImprovePasses := 0
+	for pass := 0; pass < opts.Passes; pass++ {
+		improved := false
+		report.PassesRun++
+		radius := dbsEffectiveRadius(opts, pass)
+		dbsIteratePixels(width, height, opts, restart, pass, func(x, y int) {
+			move, nx, ny, before, after, newA, newB := dbsBestColorMove(indexes, fr, fg, fb, targetR, targetG, targetB, targetFR, targetFG, targetFB, errorWeights, width, height, x, y, radius, opts.Palette, metric)
+			if after+1e-9 < before {
+				improved = true
+				report.AcceptedMoves++
+				report.LastImprovedPass = report.PassesRun
+				idx := y*width + x
+				switch move {
+				case DBSMoveFlip:
+					report.FlipMoves++
+					old := opts.Palette[int(indexes[idx])]
+					next := opts.Palette[int(newA)]
+					indexes[idx] = newA
+					applyFilteredDelta(fr, width, height, x, y, mathx.ByteToUnit(next.R)-mathx.ByteToUnit(old.R), metric)
+					applyFilteredDelta(fg, width, height, x, y, mathx.ByteToUnit(next.G)-mathx.ByteToUnit(old.G), metric)
+					applyFilteredDelta(fb, width, height, x, y, mathx.ByteToUnit(next.B)-mathx.ByteToUnit(old.B), metric)
+				case DBSMoveSwap:
+					report.SwapMoves++
+					applyColorSwap(indexes, fr, fg, fb, width, height, x, y, nx, ny, newA, newB, opts.Palette, metric)
+				}
+			}
+		})
+		if !improved {
+			noImprovePasses++
+			if noImprovePasses >= opts.MaxNoImprove {
+				break
+			}
+			continue
+		}
+		noImprovePasses = 0
+	}
+	return report
+}
+
+func dbsBestColorMove(indexes []uint8, fr, fg, fb []float32, targetR, targetG, targetB []uint8, targetFR, targetFG, targetFB, errorWeights []float32, width, height, x, y, radius int, palette core.Palette, metric dbsMetricSpec) (DBSMoveMode, int, int, float64, float64, uint8, uint8) {
+	idx := y*width + x
+	current := int(indexes[idx])
+	bestMode := DBSMoveFlip
+	bestX, bestY := -1, -1
+	bestBefore, bestAfter := 0.0, 0.0
+	bestA, bestB := uint8(current), uint8(current)
+	hasCandidate := false
+	candidates := nearestPaletteCandidates(palette, targetR[idx], targetG[idx], targetB[idx], minDBSInt(4, len(palette)))
+	for _, candidate := range candidates {
+		if candidate == current {
+			continue
+		}
+		before, after := localFilteredColorErrorDelta(fr, fg, fb, targetFR, targetFG, targetFB, errorWeights, width, height, x, y, palette[current], palette[candidate], metric)
+		if !hasCandidate || after < bestAfter {
+			bestMode = DBSMoveFlip
+			bestBefore, bestAfter = before, after
+			bestA, bestB = uint8(candidate), uint8(current)
+			hasCandidate = true
+		}
+	}
+	swapBefore, swapAfter, sx, sy, sa, sb, ok := bestColorSwap(indexes, fr, fg, fb, targetFR, targetFG, targetFB, errorWeights, width, height, x, y, radius, palette, metric)
+	if ok && (!hasCandidate || swapAfter < bestAfter) {
+		bestMode = DBSMoveSwap
+		bestX, bestY = sx, sy
+		bestBefore, bestAfter = swapBefore, swapAfter
+		bestA, bestB = sa, sb
+		hasCandidate = true
+	}
+	if !hasCandidate {
+		return DBSMoveFlip, -1, -1, 0, 0, uint8(current), uint8(current)
+	}
+	return bestMode, bestX, bestY, bestBefore, bestAfter, bestA, bestB
+}
+
+func bestColorSwap(indexes []uint8, fr, fg, fb, targetFR, targetFG, targetFB, errorWeights []float32, width, height, x, y, radius int, palette core.Palette, metric dbsMetricSpec) (float64, float64, int, int, uint8, uint8, bool) {
+	idx := y*width + x
+	current := indexes[idx]
+	bestBefore, bestAfter := 0.0, 0.0
+	bestX, bestY := -1, -1
+	bestA, bestB := current, current
+	found := false
+	for dy := -radius; dy <= radius; dy++ {
+		for dx := -radius; dx <= radius; dx++ {
+			if dx == 0 && dy == 0 {
+				continue
+			}
+			nx := x + dx
+			ny := y + dy
+			if nx < 0 || ny < 0 || nx >= width || ny >= height {
+				continue
+			}
+			nidx := ny*width + nx
+			other := indexes[nidx]
+			if other == current {
+				continue
+			}
+			before, after := localFilteredColorSwapErrorDelta(fr, fg, fb, targetFR, targetFG, targetFB, errorWeights, width, height, x, y, nx, ny, palette[int(current)], palette[int(other)], palette[int(other)], palette[int(current)], metric)
+			if !found || after < bestAfter {
+				bestBefore, bestAfter = before, after
+				bestX, bestY = nx, ny
+				bestA, bestB = other, current
+				found = true
+			}
+		}
+	}
+	return bestBefore, bestAfter, bestX, bestY, bestA, bestB, found
 }
 
 func dbsBestMultiLevelMove(gray []uint8, filtered, targetFiltered, errorWeights []float32, width, height, x, y, radius int, metric dbsMetricSpec, levels []uint8) (DBSMoveMode, int, int, float64, float64, uint8, uint8) {
@@ -560,6 +827,58 @@ func localMultiSwapErrorDelta(filtered, targetFiltered, errorWeights []float32, 
 	return localSwapErrorDelta(filtered, targetFiltered, errorWeights, width, height, x1, y1, x2, y2, delta1, delta2, metric)
 }
 
+func localFilteredColorErrorDelta(fr, fg, fb, targetFR, targetFG, targetFB, errorWeights []float32, width, height, x, y int, oldColor, newColor core.Color, metric dbsMetricSpec) (float64, float64) {
+	return localFilteredColorSwapErrorDelta(
+		fr, fg, fb, targetFR, targetFG, targetFB, errorWeights, width, height,
+		x, y, x, y,
+		oldColor, oldColor,
+		newColor, oldColor,
+		metric,
+	)
+}
+
+func localFilteredColorSwapErrorDelta(fr, fg, fb, targetFR, targetFG, targetFB, errorWeights []float32, width, height, x1, y1, x2, y2 int, oldA, oldB, newA, newB core.Color, metric dbsMetricSpec) (float64, float64) {
+	minX := maxDBSInt(0, minDBSInt(x1, x2)-metric.Radius)
+	maxX := minDBSInt(width-1, maxDBSInt(x1, x2)+metric.Radius)
+	minY := maxDBSInt(0, minDBSInt(y1, y2)-metric.Radius)
+	maxY := minDBSInt(height-1, maxDBSInt(y1, y2)+metric.Radius)
+	deltaR1 := mathx.ByteToUnit(newA.R) - mathx.ByteToUnit(oldA.R)
+	deltaG1 := mathx.ByteToUnit(newA.G) - mathx.ByteToUnit(oldA.G)
+	deltaB1 := mathx.ByteToUnit(newA.B) - mathx.ByteToUnit(oldA.B)
+	deltaR2 := mathx.ByteToUnit(newB.R) - mathx.ByteToUnit(oldB.R)
+	deltaG2 := mathx.ByteToUnit(newB.G) - mathx.ByteToUnit(oldB.G)
+	deltaB2 := mathx.ByteToUnit(newB.B) - mathx.ByteToUnit(oldB.B)
+	var before, after float64
+	for yy := minY; yy <= maxY; yy++ {
+		for xx := minX; xx <= maxX; xx++ {
+			weight := float64(errorWeights[yy*width+xx])
+			curR, curG, curB := fr[yy*width+xx], fg[yy*width+xx], fb[yy*width+xx]
+			nextR, nextG, nextB := curR, curG, curB
+			if absDBSInt(xx-x1) <= metric.Radius && absDBSInt(yy-y1) <= metric.Radius {
+				contrib := metric.contribution(xx-x1, yy-y1)
+				nextR += deltaR1 * contrib
+				nextG += deltaG1 * contrib
+				nextB += deltaB1 * contrib
+			}
+			if (x2 != x1 || y2 != y1) && absDBSInt(xx-x2) <= metric.Radius && absDBSInt(yy-y2) <= metric.Radius {
+				contrib := metric.contribution(xx-x2, yy-y2)
+				nextR += deltaR2 * contrib
+				nextG += deltaG2 * contrib
+				nextB += deltaB2 * contrib
+			}
+			dr0 := float64(curR - targetFR[yy*width+xx])
+			dg0 := float64(curG - targetFG[yy*width+xx])
+			db0 := float64(curB - targetFB[yy*width+xx])
+			dr1 := float64(nextR - targetFR[yy*width+xx])
+			dg1 := float64(nextG - targetFG[yy*width+xx])
+			db1 := float64(nextB - targetFB[yy*width+xx])
+			before += weight * (0.30*dr0*dr0 + 0.59*dg0*dg0 + 0.11*db0*db0)
+			after += weight * (0.30*dr1*dr1 + 0.59*dg1*dg1 + 0.11*db1*db1)
+		}
+	}
+	return before, after
+}
+
 func applyMultiLevelExchange(gray []uint8, filtered []float32, width, height, x1, y1, x2, y2 int, newA, newB uint8, metric dbsMetricSpec) {
 	idx1 := y1*width + x1
 	idx2 := y2*width + x2
@@ -568,6 +887,22 @@ func applyMultiLevelExchange(gray []uint8, filtered []float32, width, height, x1
 	gray[idx1], gray[idx2] = newA, newB
 	applyFilteredDelta(filtered, width, height, x1, y1, delta1, metric)
 	applyFilteredDelta(filtered, width, height, x2, y2, delta2, metric)
+}
+
+func applyColorSwap(indexes []uint8, fr, fg, fb []float32, width, height, x1, y1, x2, y2 int, newA, newB uint8, palette core.Palette, metric dbsMetricSpec) {
+	idx1 := y1*width + x1
+	idx2 := y2*width + x2
+	oldA := palette[int(indexes[idx1])]
+	oldB := palette[int(indexes[idx2])]
+	nextA := palette[int(newA)]
+	nextB := palette[int(newB)]
+	indexes[idx1], indexes[idx2] = newA, newB
+	applyFilteredDelta(fr, width, height, x1, y1, mathx.ByteToUnit(nextA.R)-mathx.ByteToUnit(oldA.R), metric)
+	applyFilteredDelta(fg, width, height, x1, y1, mathx.ByteToUnit(nextA.G)-mathx.ByteToUnit(oldA.G), metric)
+	applyFilteredDelta(fb, width, height, x1, y1, mathx.ByteToUnit(nextA.B)-mathx.ByteToUnit(oldA.B), metric)
+	applyFilteredDelta(fr, width, height, x2, y2, mathx.ByteToUnit(nextB.R)-mathx.ByteToUnit(oldB.R), metric)
+	applyFilteredDelta(fg, width, height, x2, y2, mathx.ByteToUnit(nextB.G)-mathx.ByteToUnit(oldB.G), metric)
+	applyFilteredDelta(fb, width, height, x2, y2, mathx.ByteToUnit(nextB.B)-mathx.ByteToUnit(oldB.B), metric)
 }
 
 func dbsBestMove(binary []uint8, filtered []float32, target []uint8, targetFiltered, errorWeights []float32, width, height, x, y int, opts DBSOptions, metric dbsMetricSpec) (DBSMoveMode, int, int, float64, float64) {
@@ -980,6 +1315,26 @@ func writeGrayToImage(img *core.Image, gray []uint8) {
 			case core.RGBA8:
 				alpha := row[offset+3]
 				row[offset], row[offset+1], row[offset+2], row[offset+3] = v, v, v, alpha
+			}
+		}
+	}
+}
+
+func writePaletteToImage(img *core.Image, indexes []uint8, palette core.Palette) {
+	channels := img.ChannelCount()
+	for y := 0; y < img.Height; y++ {
+		row := img.Row(y)
+		for x := 0; x < img.Width; x++ {
+			c := palette[int(indexes[y*img.Width+x])]
+			offset := x * channels
+			switch img.Format {
+			case core.Gray8:
+				row[offset] = mathx.LumaByte(c.R, c.G, c.B)
+			case core.RGB8:
+				row[offset], row[offset+1], row[offset+2] = c.R, c.G, c.B
+			case core.RGBA8:
+				alpha := row[offset+3]
+				row[offset], row[offset+1], row[offset+2], row[offset+3] = c.R, c.G, c.B, alpha
 			}
 		}
 	}

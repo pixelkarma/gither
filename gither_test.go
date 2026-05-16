@@ -570,6 +570,63 @@ func TestMultiLevelDBSUsesMultipleLevels(t *testing.T) {
 	}
 }
 
+func TestColorDBSDeterministic(t *testing.T) {
+	palette := Palette{
+		{R: 16, G: 20, B: 24},
+		{R: 235, G: 228, B: 210},
+		{R: 210, G: 100, B: 48},
+		{R: 52, G: 92, B: 120},
+	}
+	imgA, _ := NewPackedImage(rgbGradient(16, 16), 16, 16, RGB8)
+	imgB, _ := NewPackedImage(rgbGradient(16, 16), 16, 16, RGB8)
+	opts := DBSOptions{
+		Palette:      palette,
+		Passes:       1,
+		MoveMode:     DBSMoveHybrid,
+		Neighborhood: 1,
+		Metric:       DBSMetricBalanced,
+		ScanOrder:    DBSScanSerpentine,
+		RandomSeed:   7,
+	}
+	if err := ColorDBS(imgA, opts); err != nil {
+		t.Fatal(err)
+	}
+	if err := ColorDBS(imgB, opts); err != nil {
+		t.Fatal(err)
+	}
+	if hashBytes(imgA.Pix) != hashBytes(imgB.Pix) {
+		t.Fatal("color DBS should be deterministic")
+	}
+}
+
+func TestColorDBSUsesPaletteColors(t *testing.T) {
+	palette := Palette{
+		{R: 16, G: 20, B: 24},
+		{R: 235, G: 228, B: 210},
+		{R: 210, G: 100, B: 48},
+		{R: 52, G: 92, B: 120},
+	}
+	img, _ := NewPackedImage(rgbGradient(18, 18), 18, 18, RGB8)
+	opts := DBSOptions{
+		Palette:      palette,
+		Passes:       1,
+		MoveMode:     DBSMoveHybrid,
+		Neighborhood: 1,
+		Metric:       DBSMetricBalanced,
+		ScanOrder:    DBSScanSerpentine,
+		RandomSeed:   7,
+	}
+	if err := ColorDBS(img, opts); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < len(img.Pix); i += 3 {
+		c := Color{R: img.Pix[i], G: img.Pix[i+1], B: img.Pix[i+2]}
+		if !palette.Contains(c) {
+			t.Fatalf("output color %#v not found in palette", c)
+		}
+	}
+}
+
 func TestVariableDiffusionPreservesRGBAAlpha(t *testing.T) {
 	pix := rgbaGradient(12, 12)
 	alpha := make([]uint8, 12*12)
@@ -691,6 +748,29 @@ func TestFixtureAlgorithmsDeterministic(t *testing.T) {
 				})
 			},
 			hash: 10788990793269373098,
+		},
+		{
+			name: "color-dbs",
+			run: func(img *Image) error {
+				palette, err := ExtractPaletteWithOptions(img, PaletteExtractOptions{
+					Colors: 6,
+					Method: PaletteMethodMedianCut,
+					Sort:   PaletteSortRGB,
+				})
+				if err != nil {
+					return err
+				}
+				return ColorDBS(img, DBSOptions{
+					Palette:      palette,
+					Passes:       1,
+					MoveMode:     DBSMoveHybrid,
+					Neighborhood: 1,
+					Metric:       DBSMetricBalanced,
+					ScanOrder:    DBSScanSerpentine,
+					RandomSeed:   7,
+				})
+			},
+			hash: 15234579066110475956,
 		},
 	}
 	for _, tc := range cases {
