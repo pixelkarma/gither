@@ -25,6 +25,10 @@ archives:
   - id: default
     ids:
       - gither
+    files:
+      - LICENSE
+      - README.md
+      - INSTALL.md
     formats:
       - tar.gz
     format_overrides:
