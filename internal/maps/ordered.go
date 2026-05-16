@@ -1,5 +1,7 @@
 package maps
 
+import "sort"
+
 var (
 	Bayer2x2 = []uint16{0, 2, 3, 1}
 	Bayer4x4 = []uint16{
@@ -49,13 +51,53 @@ func GenerateBayer16x16() []uint16 {
 }
 
 func GenerateClusterDot16x16() []uint16 {
-	out := make([]uint16, 256)
+	type point struct {
+		x, y    int
+		distSq  int
+		diamond int
+		checker int
+	}
+	points := make([]point, 0, 16*16)
 	for y := 0; y < 16; y++ {
 		for x := 0; x < 16; x++ {
-			base := ClusterDot8x8[(y%8)*8+(x%8)]
-			quadrant := ClusterDot4x4[(y/4)*4+(x/4)]
-			out[y*16+x] = base*4 + quadrant
+			dx2 := 2*x - 15
+			dy2 := 2*y - 15
+			absDx2 := dx2
+			if absDx2 < 0 {
+				absDx2 = -absDx2
+			}
+			absDy2 := dy2
+			if absDy2 < 0 {
+				absDy2 = -absDy2
+			}
+			points = append(points, point{
+				x:       x,
+				y:       y,
+				distSq:  dx2*dx2 + dy2*dy2,
+				diamond: absDx2 + absDy2,
+				checker: (x + y) & 1,
+			})
 		}
+	}
+	sort.Slice(points, func(i, j int) bool {
+		left, right := points[i], points[j]
+		if left.distSq != right.distSq {
+			return left.distSq < right.distSq
+		}
+		if left.diamond != right.diamond {
+			return left.diamond < right.diamond
+		}
+		if left.checker != right.checker {
+			return left.checker < right.checker
+		}
+		if left.y != right.y {
+			return left.y < right.y
+		}
+		return left.x < right.x
+	})
+	out := make([]uint16, 256)
+	for rank, pt := range points {
+		out[pt.y*16+pt.x] = uint16(rank)
 	}
 	return out
 }
