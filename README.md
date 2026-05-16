@@ -29,6 +29,13 @@ CLI:
 go install github.com/pixelkarma/gither/cmd/gither@latest
 ```
 
+macOS note for downloaded release binaries:
+
+```bash
+xattr -d com.apple.quarantine gither
+chmod +x gither
+```
+
 Library:
 
 ```bash
