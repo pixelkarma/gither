@@ -40,7 +40,8 @@ Build from source:
 ```bash
 git clone https://github.com/pixelkarma/gither.git
 cd gither
-go build ./cmd/gither
+mkdir -p dist
+go build -o ./dist/gither ./cmd/gither
 ```
 
 ## CLI Quick Start

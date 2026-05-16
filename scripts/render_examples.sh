@@ -27,7 +27,7 @@ run_gither() {
 
   echo "rendering $out_name"
   if [[ "$BIN_MODE" == "bin" ]]; then
-    cmd=("$ROOT_DIR/gither" -in "$INPUT_PATH" -out "$OUTPUT_DIR/$out_name")
+    cmd=("$ROOT_DIR/dist/gither" -in "$INPUT_PATH" -out "$OUTPUT_DIR/$out_name")
   else
     cmd=(go run ./cmd/gither -in "$INPUT_PATH" -out "$OUTPUT_DIR/$out_name")
   fi

@@ -4,3 +4,4 @@ import "github.com/pixelkarma/gither/internal/engine"
 
 func Threshold(img *Image, opts Options) error { return engine.Threshold(img, opts) }
 func Random(img *Image, opts Options) error    { return engine.Random(img, opts) }
+func Riemersma(img *Image, opts Options) error { return engine.Riemersma(img, opts) }

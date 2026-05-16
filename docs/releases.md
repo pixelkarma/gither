@@ -37,7 +37,7 @@ Suggested tag format:
 The current release pipeline checks:
 
 - `go test ./...`
-- `go build ./cmd/gither`
+- `go build -o ./dist/gither ./cmd/gither`
 - shell validation for the example scripts
 
 That keeps the maintenance burden low while still protecting the public package and binary.

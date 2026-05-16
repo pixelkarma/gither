@@ -8,7 +8,7 @@ OUTPUT_PATH="${1:-}"
 CMD=(
   go test
   -run '^$'
-  -bench 'BenchmarkDBS(ComparisonFixtures|ColorFixtures|SchedulesFixtureCat)|BenchmarkAlgorithmsFixtureCat/(dbs-fast|dbs-balanced|dbs-perceptual|clustered-dbs|multilevel-dbs|color-dbs)$'
+  -bench 'BenchmarkDBS(ComparisonFixtures|ColorFixtures|SchedulesFixtureTest)|BenchmarkAlgorithmsFixtureTest/(dbs-fast|dbs-balanced|dbs-perceptual|clustered-dbs|multilevel-dbs|color-dbs)$'
   -benchmem
   -count=1
 )

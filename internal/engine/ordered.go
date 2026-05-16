@@ -99,3 +99,7 @@ func orderedThresholdUnit(rank, den uint16, strength float32) float32 {
 	scaledSteps := float32(int(centered * (strength * 255) / rng))
 	return scaledSteps / 255
 }
+
+func StochasticClusteredDot(img *core.Image, opts core.Options, ordered OrderedMap) error {
+	return ApplyOrdered(img, ordered, opts)
+}

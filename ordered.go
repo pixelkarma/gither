@@ -1,7 +1,6 @@
 package gither
 
 import (
-	"github.com/pixelkarma/gither/internal/core"
 	"github.com/pixelkarma/gither/internal/engine"
 	"github.com/pixelkarma/gither/internal/maps"
 )
@@ -64,8 +63,9 @@ func VoidAndCluster64x64(img *Image, opts Options) error {
 func BlueNoiseMultitone64x64(img *Image, opts Options) error {
 	return engine.ApplyOrdered(img, OrderedMap{Values: maps.GenerateBlueNoise64x64(), Width: 64, Height: 64, Strength: opts.WithDefaults().Strength}, opts)
 }
+func Yliluoma1(img *Image, opts Options) error { return engine.Yliluoma1(img, opts) }
+func Yliluoma2(img *Image, opts Options) error { return engine.Yliluoma2(img, opts) }
+func Yliluoma3(img *Image, opts Options) error { return engine.Yliluoma3(img, opts) }
 func CustomOrdered(img *Image, ordered OrderedMap, opts Options) error {
 	return engine.ApplyOrdered(img, ordered, opts)
 }
-
-var _ = core.DefaultOrderedStrength
