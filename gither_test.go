@@ -627,6 +627,99 @@ func TestColorDBSUsesPaletteColors(t *testing.T) {
 	}
 }
 
+func TestDBSFamilyPreservesRGBAAlpha(t *testing.T) {
+	pix := rgbaGradient(16, 16)
+	alpha := make([]uint8, 16*16)
+	for i := range alpha {
+		alpha[i] = pix[i*4+3]
+	}
+	palette := Palette{
+		{R: 16, G: 20, B: 24},
+		{R: 235, G: 228, B: 210},
+		{R: 210, G: 100, B: 48},
+		{R: 52, G: 92, B: 120},
+	}
+	cases := []struct {
+		name string
+		run  func(*Image) error
+	}{
+		{
+			name: "dbs",
+			run: func(img *Image) error {
+				return DirectBinarySearch(img, DBSOptions{
+					Passes:       1,
+					Threshold:    127,
+					MoveMode:     DBSMoveHybrid,
+					Neighborhood: 1,
+					Metric:       DBSMetricBalanced,
+					ScanOrder:    DBSScanSerpentine,
+					RandomSeed:   7,
+				})
+			},
+		},
+		{
+			name: "clustered-dbs",
+			run: func(img *Image) error {
+				return ClusteredDBS(img, DBSOptions{
+					Passes:           1,
+					Threshold:        127,
+					MoveMode:         DBSMoveHybrid,
+					Neighborhood:     1,
+					Metric:           DBSMetricBalanced,
+					ScanOrder:        DBSScanSerpentine,
+					RandomSeed:       7,
+					ClusterStrength:  0.18,
+					ClusterToneAware: true,
+				})
+			},
+		},
+		{
+			name: "multilevel-dbs",
+			run: func(img *Image) error {
+				return MultiLevelDBS(img, DBSOptions{
+					Levels:       4,
+					Passes:       1,
+					MoveMode:     DBSMoveHybrid,
+					Neighborhood: 1,
+					Metric:       DBSMetricBalanced,
+					ScanOrder:    DBSScanSerpentine,
+					RandomSeed:   7,
+				})
+			},
+		},
+		{
+			name: "color-dbs",
+			run: func(img *Image) error {
+				return ColorDBS(img, DBSOptions{
+					Palette:      palette,
+					Passes:       1,
+					MoveMode:     DBSMoveHybrid,
+					Neighborhood: 1,
+					Metric:       DBSMetricBalanced,
+					ScanOrder:    DBSScanSerpentine,
+					RandomSeed:   7,
+				})
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			img, err := NewPackedImage(append([]uint8(nil), pix...), 16, 16, RGBA8)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := tc.run(img); err != nil {
+				t.Fatal(err)
+			}
+			for i := range alpha {
+				if img.Pix[i*4+3] != alpha[i] {
+					t.Fatalf("alpha changed at pixel %d", i)
+				}
+			}
+		})
+	}
+}
+
 func TestVariableDiffusionPreservesRGBAAlpha(t *testing.T) {
 	pix := rgbaGradient(12, 12)
 	alpha := make([]uint8, 12*12)

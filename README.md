@@ -13,6 +13,16 @@
   - `multilevel-dbs`
   - `color-dbs`
 
+The DBS family is now complete as a maintained major surface in this repo:
+
+- binary grayscale DBS
+- clustered DBS
+- multilevel grayscale DBS
+- palette-index color DBS
+- schedule presets
+- fixture regression coverage
+- dedicated benchmark tooling
+
 ## Build
 
 ```bash

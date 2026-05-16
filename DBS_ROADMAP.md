@@ -495,19 +495,23 @@ Treat DBS like a product line, not a side algorithm.
 
 Arrive at a complete DBS solution for `gither`.
 
+### Status
+
+Completed on May 16, 2026.
+
 ### Completion standard
 
 The DBS family is complete when all of these are true:
 
-- grayscale binary DBS exists and is solid
-- pair-swap and flip scheduling are available
-- multiple perceptual metrics are available
-- clustered DBS exists
-- multilevel DBS exists
-- color DBS exists
-- the CLI supports practical presets
-- fixtures and benchmarks cover the family
-- performance is optimized enough for offline use on real images
+- [x] grayscale binary DBS exists and is solid
+- [x] pair-swap and flip scheduling are available
+- [x] multiple perceptual metrics are available
+- [x] clustered DBS exists
+- [x] multilevel DBS exists
+- [x] color DBS exists
+- [x] the CLI supports practical presets
+- [x] fixtures and benchmarks cover the family
+- [x] performance is optimized enough for offline use on real images
 
 At that point, DBS is no longer a roadmap item. It becomes a maintained major
 family alongside:
