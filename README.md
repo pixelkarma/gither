@@ -161,4 +161,7 @@ Useful focused DBS benches:
 ```bash
 go test -run '^$' -bench 'BenchmarkAlgorithmsFixtureCat/(dbs-fast|dbs-balanced|dbs-perceptual|clustered-dbs|multilevel-dbs|color-dbs)$' -benchmem -benchtime=1x
 go test -run '^$' -bench 'BenchmarkDBSSchedulesFixtureCat/(preview|balanced|hq)$' -benchmem -benchtime=1x
+./scripts/benchmark_dbs.sh
 ```
+
+See [DBS_VERIFICATION.md](/Users/admin/Documents/dither/gither/DBS_VERIFICATION.md:1) for the dedicated fixture suite and comparison benchmark program.
