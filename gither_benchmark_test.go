@@ -28,6 +28,7 @@ func BenchmarkAlgorithmsFixtureCat(b *testing.B) {
 		{name: "bayer-16x16", run: func(img *Image) error { return Bayer16x16(img, Options{Quantizer: RGBLevels(4)}) }},
 		{name: "cluster-dot-4x4", run: func(img *Image) error { return ClusterDot4x4(img, Options{Quantizer: PaletteQuantizer(autoPalette)}) }},
 		{name: "cluster-dot-8x8", run: func(img *Image) error { return ClusterDot8x8(img, Options{Quantizer: PaletteQuantizer(autoPalette)}) }},
+		{name: "cluster-dot-16x16", run: func(img *Image) error { return ClusterDot16x16(img, Options{Quantizer: PaletteQuantizer(autoPalette)}) }},
 		{name: "space-filling-16x16", run: func(img *Image) error { return SpaceFilling16x16(img, Options{Quantizer: RGBLevels(4)}) }},
 		{name: "void-and-cluster-64x64", run: func(img *Image) error { return VoidAndCluster64x64(img, Options{Quantizer: RGBLevels(4)}) }},
 		{name: "blue-noise-multitone-64x64", run: func(img *Image) error { return BlueNoiseMultitone64x64(img, Options{Quantizer: GrayLevels(2)}) }},

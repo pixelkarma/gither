@@ -34,6 +34,9 @@ func ClusterDot4x4(img *Image, opts Options) error {
 func ClusterDot8x8(img *Image, opts Options) error {
 	return engine.ApplyOrdered(img, OrderedMap{Values: maps.ClusterDot8x8, Width: 8, Height: 8, Strength: opts.WithDefaults().Strength}, opts)
 }
+func ClusterDot16x16(img *Image, opts Options) error {
+	return engine.ApplyOrdered(img, OrderedMap{Values: maps.GenerateClusterDot16x16(), Width: 16, Height: 16, Strength: opts.WithDefaults().Strength}, opts)
+}
 func SpaceFilling16x16(img *Image, opts Options) error {
 	return engine.ApplyOrdered(img, OrderedMap{Values: maps.GenerateHilbert16x16(), Width: 16, Height: 16, Strength: opts.WithDefaults().Strength}, opts)
 }

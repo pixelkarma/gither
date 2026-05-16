@@ -47,3 +47,15 @@ func GenerateBayer16x16() []uint16 {
 	}
 	return out
 }
+
+func GenerateClusterDot16x16() []uint16 {
+	out := make([]uint16, 256)
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			base := ClusterDot8x8[(y%8)*8+(x%8)]
+			quadrant := ClusterDot4x4[(y/4)*4+(x/4)]
+			out[y*16+x] = base*4 + quadrant
+		}
+	}
+	return out
+}

@@ -195,6 +195,23 @@ func TestBlueNoiseDeterministic(t *testing.T) {
 	}
 }
 
+func TestClusterDot16x16PaletteMembership(t *testing.T) {
+	palette := Palette{{0, 0, 0}, {255, 255, 255}, {255, 0, 0}, {0, 128, 255}}
+	img, err := NewPackedImage(rgbGradient(12, 12), 12, 12, RGB8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ClusterDot16x16(img, Options{Quantizer: PaletteQuantizer(palette)}); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < len(img.Pix); i += 3 {
+		c := Color{img.Pix[i], img.Pix[i+1], img.Pix[i+2]}
+		if !palette.Contains(c) {
+			t.Fatalf("pixel %v is not in palette", c)
+		}
+	}
+}
+
 func TestVariableDiffusionPreservesRGBAAlpha(t *testing.T) {
 	pix := rgbaGradient(12, 12)
 	alpha := make([]uint8, 12*12)

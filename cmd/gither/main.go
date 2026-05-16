@@ -72,7 +72,7 @@ func parseFlags() config {
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "Usage: gither -in input.png -out output.png [options]\n\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "Algorithms:\n")
-		fmt.Fprintf(flag.CommandLine.Output(), "  ordered: bayer-2x2, bayer-4x4, bayer-8x8, bayer-16x16, cluster-dot-4x4, cluster-dot-8x8, space-filling-16x16, void-and-cluster-64x64, blue-noise-multitone-64x64, custom-ordered\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "  ordered: bayer-2x2, bayer-4x4, bayer-8x8, bayer-16x16, cluster-dot-4x4, cluster-dot-8x8, cluster-dot-16x16, space-filling-16x16, void-and-cluster-64x64, blue-noise-multitone-64x64, custom-ordered\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  palette-ordered: yliluoma-1, yliluoma-2, yliluoma-3\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  diffusion: floyd-steinberg, false-floyd-steinberg, jjn, stucki, burkes, sierra, two-row-sierra, sierra-lite, stevenson-arce, atkinson\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  variable diffusion: ostromoukhov, zhou-fang, balanced-variable, balanced-variable-thresholded\n")
@@ -241,6 +241,8 @@ func applyAlgorithm(img *gither.Image, cfg config, opts gither.Options) error {
 		return gither.ClusterDot4x4(img, opts)
 	case "cluster-dot-8x8":
 		return gither.ClusterDot8x8(img, opts)
+	case "cluster-dot-16x16":
+		return gither.ClusterDot16x16(img, opts)
 	case "space-filling-16x16":
 		return gither.SpaceFilling16x16(img, opts)
 	case "void-and-cluster-64x64":
