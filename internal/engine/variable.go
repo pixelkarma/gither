@@ -37,6 +37,20 @@ var (
 		{192, 0.26, 0.42, 0.32},
 		{255, 0.12, 0.50, 0.38},
 	}
+	smoothAnchors = []VariableAnchor{
+		{0, 0.58, 0.10, 0.32},
+		{64, 0.50, 0.18, 0.32},
+		{128, 0.40, 0.28, 0.32},
+		{192, 0.26, 0.38, 0.36},
+		{255, 0.14, 0.46, 0.40},
+	}
+	punchyAnchors = []VariableAnchor{
+		{0, 0.76, 0.02, 0.22},
+		{64, 0.66, 0.10, 0.24},
+		{128, 0.52, 0.22, 0.26},
+		{192, 0.28, 0.38, 0.34},
+		{255, 0.10, 0.54, 0.36},
+	}
 )
 
 func Ostromoukhov(img *core.Image, opts core.Options) error {
@@ -53,6 +67,12 @@ func BalancedVariable(img *core.Image, opts core.Options) error {
 
 func BalancedVariableThresholded(img *core.Image, opts core.Options) error {
 	return ApplyVariableGray(img, opts, BalancedCurve(), true)
+}
+func SmoothVariable(img *core.Image, opts core.Options) error {
+	return ApplyVariableGray(img, opts, SmoothCurve(), false)
+}
+func PunchyVariable(img *core.Image, opts core.Options) error {
+	return ApplyVariableGray(img, opts, PunchyCurve(), false)
 }
 
 func ApplyVariableGray(img *core.Image, opts core.Options, curve VariableCurve, thresholded bool) error {
@@ -155,6 +175,14 @@ func OstromoukhovCurve() VariableCurve {
 
 func BalancedCurve() VariableCurve {
 	curve, _ := NewVariableCurve(balancedAnchors)
+	return curve
+}
+func SmoothCurve() VariableCurve {
+	curve, _ := NewVariableCurve(smoothAnchors)
+	return curve
+}
+func PunchyCurve() VariableCurve {
+	curve, _ := NewVariableCurve(punchyAnchors)
 	return curve
 }
 

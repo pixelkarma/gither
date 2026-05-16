@@ -72,10 +72,10 @@ func parseFlags() config {
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "Usage: gither -in input.png -out output.png [options]\n\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "Algorithms:\n")
-		fmt.Fprintf(flag.CommandLine.Output(), "  ordered: bayer-2x2, bayer-4x4, bayer-8x8, bayer-16x16, cluster-dot-4x4, cluster-dot-8x8, cluster-dot-16x16, space-filling-16x16, void-and-cluster-64x64, blue-noise-multitone-64x64, custom-ordered\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "  ordered: bayer-2x2, bayer-4x4, bayer-8x8, bayer-16x16, adaptive-bayer-8x8, adaptive-bayer-16x16, cluster-dot-4x4, cluster-dot-8x8, cluster-dot-16x16, stochastic-cluster-dot-16x16, polyomino-16x16, space-filling-16x16, space-filling-morton-16x16, space-filling-serpentine-16x16, void-and-cluster-64x64, blue-noise-multitone-64x64, custom-ordered\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  palette-ordered: yliluoma-1, yliluoma-2, yliluoma-3\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  diffusion: floyd-steinberg, false-floyd-steinberg, jjn, stucki, burkes, sierra, two-row-sierra, sierra-lite, stevenson-arce, atkinson\n")
-		fmt.Fprintf(flag.CommandLine.Output(), "  variable diffusion: ostromoukhov, zhou-fang, balanced-variable, balanced-variable-thresholded\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "  variable diffusion: ostromoukhov, zhou-fang, balanced-variable, balanced-variable-thresholded, smooth-variable, punchy-variable\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  stochastic: threshold, random\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  advanced: riemersma\n\n")
 		flag.PrintDefaults()
@@ -237,14 +237,26 @@ func applyAlgorithm(img *gither.Image, cfg config, opts gither.Options) error {
 		return gither.Bayer8x8(img, opts)
 	case "bayer-16x16":
 		return gither.Bayer16x16(img, opts)
+	case "adaptive-bayer-8x8":
+		return gither.AdaptiveBayer8x8(img, opts)
+	case "adaptive-bayer-16x16":
+		return gither.AdaptiveBayer16x16(img, opts)
 	case "cluster-dot-4x4":
 		return gither.ClusterDot4x4(img, opts)
 	case "cluster-dot-8x8":
 		return gither.ClusterDot8x8(img, opts)
 	case "cluster-dot-16x16":
 		return gither.ClusterDot16x16(img, opts)
+	case "stochastic-cluster-dot-16x16":
+		return gither.StochasticClusterDot16x16(img, opts)
+	case "polyomino-16x16":
+		return gither.Polyomino16x16(img, opts)
 	case "space-filling-16x16":
 		return gither.SpaceFilling16x16(img, opts)
+	case "space-filling-morton-16x16":
+		return gither.SpaceFillingMorton16x16(img, opts)
+	case "space-filling-serpentine-16x16":
+		return gither.SpaceFillingSerpentine16x16(img, opts)
 	case "void-and-cluster-64x64":
 		return gither.VoidAndCluster64x64(img, opts)
 	case "blue-noise-multitone-64x64":
@@ -289,6 +301,10 @@ func applyAlgorithm(img *gither.Image, cfg config, opts gither.Options) error {
 		return gither.BalancedVariable(img, opts)
 	case "balanced-variable-thresholded":
 		return gither.BalancedVariableThresholded(img, opts)
+	case "smooth-variable":
+		return gither.SmoothVariable(img, opts)
+	case "punchy-variable":
+		return gither.PunchyVariable(img, opts)
 	case "threshold":
 		return gither.Threshold(img, opts)
 	case "random":

@@ -212,6 +212,76 @@ func TestClusterDot16x16PaletteMembership(t *testing.T) {
 	}
 }
 
+func TestAdaptiveOrderedDeterministic(t *testing.T) {
+	imgA, _ := NewPackedImage(rgbGradient(18, 18), 18, 18, RGB8)
+	imgB, _ := NewPackedImage(rgbGradient(18, 18), 18, 18, RGB8)
+	opts := Options{Quantizer: RGBLevels(4)}
+	if err := AdaptiveBayer16x16(imgA, opts); err != nil {
+		t.Fatal(err)
+	}
+	if err := AdaptiveBayer16x16(imgB, opts); err != nil {
+		t.Fatal(err)
+	}
+	if hashBytes(imgA.Pix) != hashBytes(imgB.Pix) {
+		t.Fatal("adaptive ordered dithering should be deterministic")
+	}
+}
+
+func TestExtendedOrderedPaletteMembership(t *testing.T) {
+	palette := Palette{{0, 0, 0}, {255, 255, 255}, {255, 0, 0}, {0, 128, 255}}
+	cases := []struct {
+		name string
+		run  func(*Image) error
+	}{
+		{name: "stochastic-cluster", run: func(img *Image) error {
+			return StochasticClusterDot16x16(img, Options{Quantizer: PaletteQuantizer(palette), Seed: 7})
+		}},
+		{name: "polyomino", run: func(img *Image) error { return Polyomino16x16(img, Options{Quantizer: PaletteQuantizer(palette)}) }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			img, err := NewPackedImage(rgbGradient(12, 12), 12, 12, RGB8)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := tc.run(img); err != nil {
+				t.Fatal(err)
+			}
+			for i := 0; i < len(img.Pix); i += 3 {
+				c := Color{img.Pix[i], img.Pix[i+1], img.Pix[i+2]}
+				if !palette.Contains(c) {
+					t.Fatalf("pixel %v is not in palette", c)
+				}
+			}
+		})
+	}
+}
+
+func TestAdditionalVariableCurvesDeterministic(t *testing.T) {
+	cases := []struct {
+		name string
+		run  func(*Image) error
+	}{
+		{name: "smooth", run: func(img *Image) error { return SmoothVariable(img, Options{Quantizer: GrayLevels(2)}) }},
+		{name: "punchy", run: func(img *Image) error { return PunchyVariable(img, Options{Quantizer: GrayLevels(2)}) }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			imgA, _ := NewPackedImage(rgbaGradient(14, 14), 14, 14, RGBA8)
+			imgB, _ := NewPackedImage(rgbaGradient(14, 14), 14, 14, RGBA8)
+			if err := tc.run(imgA); err != nil {
+				t.Fatal(err)
+			}
+			if err := tc.run(imgB); err != nil {
+				t.Fatal(err)
+			}
+			if hashBytes(imgA.Pix) != hashBytes(imgB.Pix) {
+				t.Fatal("variable curve output should be deterministic")
+			}
+		})
+	}
+}
+
 func TestVariableDiffusionPreservesRGBAAlpha(t *testing.T) {
 	pix := rgbaGradient(12, 12)
 	alpha := make([]uint8, 12*12)

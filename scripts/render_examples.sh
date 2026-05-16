@@ -26,9 +26,9 @@ run_gither() {
 
   echo "rendering $out_name"
   if [[ "$BIN_MODE" == "bin" ]]; then
-    "$ROOT_DIR/gither" -in "$INPUT_PATH" -out "$OUTPUT_DIR/$out_name" "${VERBOSE_FLAG[@]}" "$@"
+    "$ROOT_DIR/gither" -in "$INPUT_PATH" -out "$OUTPUT_DIR/$out_name" "${VERBOSE_FLAG[@]-}" "$@"
   else
-    go run ./cmd/gither -in "$INPUT_PATH" -out "$OUTPUT_DIR/$out_name" "${VERBOSE_FLAG[@]}" "$@"
+    go run ./cmd/gither -in "$INPUT_PATH" -out "$OUTPUT_DIR/$out_name" "${VERBOSE_FLAG[@]-}" "$@"
   fi
 }
 
@@ -37,10 +37,16 @@ run_gither "cat-bayer-2x2-rgb4.png" -algorithm bayer-2x2 -quantizer rgb-levels -
 run_gither "cat-bayer-4x4-rgb4.png" -algorithm bayer-4x4 -quantizer rgb-levels -levels 4
 run_gither "cat-bayer-8x8-rgb4.png" -algorithm bayer-8x8 -quantizer rgb-levels -levels 4
 run_gither "cat-bayer-16x16-rgb4.png" -algorithm bayer-16x16 -quantizer rgb-levels -levels 4
+run_gither "cat-adaptive-bayer-8x8-rgb4.png" -algorithm adaptive-bayer-8x8 -quantizer rgb-levels -levels 4
+run_gither "cat-adaptive-bayer-16x16-rgb4.png" -algorithm adaptive-bayer-16x16 -quantizer rgb-levels -levels 4
 run_gither "cat-cluster-dot-4x4-palette-auto6.png" -algorithm cluster-dot-4x4 -quantizer palette -palette auto -palette-colors 6
 run_gither "cat-cluster-dot-8x8-palette-auto6.png" -algorithm cluster-dot-8x8 -quantizer palette -palette auto -palette-colors 6
 run_gither "cat-cluster-dot-16x16-palette-auto6.png" -algorithm cluster-dot-16x16 -quantizer palette -palette auto -palette-colors 6
+run_gither "cat-stochastic-cluster-dot-16x16-palette-auto6.png" -algorithm stochastic-cluster-dot-16x16 -quantizer palette -palette auto -palette-colors 6 -seed 7
+run_gither "cat-polyomino-16x16-palette-auto6.png" -algorithm polyomino-16x16 -quantizer palette -palette auto -palette-colors 6
 run_gither "cat-space-filling-16x16-rgb4.png" -algorithm space-filling-16x16 -quantizer rgb-levels -levels 4
+run_gither "cat-space-filling-morton-16x16-rgb4.png" -algorithm space-filling-morton-16x16 -quantizer rgb-levels -levels 4
+run_gither "cat-space-filling-serpentine-16x16-rgb4.png" -algorithm space-filling-serpentine-16x16 -quantizer rgb-levels -levels 4
 run_gither "cat-void-and-cluster-64x64-rgb4.png" -algorithm void-and-cluster-64x64 -quantizer rgb-levels -levels 4
 run_gither "cat-blue-noise-multitone-64x64-gray2.png" -algorithm blue-noise-multitone-64x64 -quantizer gray-levels -levels 2
 
@@ -66,6 +72,8 @@ run_gither "cat-ostromoukhov-gray2.png" -algorithm ostromoukhov -quantizer gray-
 run_gither "cat-zhou-fang-gray2.png" -algorithm zhou-fang -quantizer gray-levels -levels 2 -seed 7
 run_gither "cat-balanced-variable-gray2.png" -algorithm balanced-variable -quantizer gray-levels -levels 2
 run_gither "cat-balanced-variable-thresholded-gray2.png" -algorithm balanced-variable-thresholded -quantizer gray-levels -levels 2 -seed 7
+run_gither "cat-smooth-variable-gray2.png" -algorithm smooth-variable -quantizer gray-levels -levels 2
+run_gither "cat-punchy-variable-gray2.png" -algorithm punchy-variable -quantizer gray-levels -levels 2
 
 # Stochastic and path-based modes.
 run_gither "cat-threshold-gray2.png" -algorithm threshold -quantizer gray-levels -levels 2 -threshold 127

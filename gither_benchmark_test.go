@@ -26,10 +26,18 @@ func BenchmarkAlgorithmsFixtureCat(b *testing.B) {
 		{name: "bayer-4x4", run: func(img *Image) error { return Bayer4x4(img, Options{Quantizer: RGBLevels(4)}) }},
 		{name: "bayer-8x8", run: func(img *Image) error { return Bayer8x8(img, Options{Quantizer: RGBLevels(4)}) }},
 		{name: "bayer-16x16", run: func(img *Image) error { return Bayer16x16(img, Options{Quantizer: RGBLevels(4)}) }},
+		{name: "adaptive-bayer-8x8", run: func(img *Image) error { return AdaptiveBayer8x8(img, Options{Quantizer: RGBLevels(4)}) }},
+		{name: "adaptive-bayer-16x16", run: func(img *Image) error { return AdaptiveBayer16x16(img, Options{Quantizer: RGBLevels(4)}) }},
 		{name: "cluster-dot-4x4", run: func(img *Image) error { return ClusterDot4x4(img, Options{Quantizer: PaletteQuantizer(autoPalette)}) }},
 		{name: "cluster-dot-8x8", run: func(img *Image) error { return ClusterDot8x8(img, Options{Quantizer: PaletteQuantizer(autoPalette)}) }},
 		{name: "cluster-dot-16x16", run: func(img *Image) error { return ClusterDot16x16(img, Options{Quantizer: PaletteQuantizer(autoPalette)}) }},
+		{name: "stochastic-cluster-dot-16x16", run: func(img *Image) error {
+			return StochasticClusterDot16x16(img, Options{Quantizer: PaletteQuantizer(autoPalette), Seed: 7})
+		}},
+		{name: "polyomino-16x16", run: func(img *Image) error { return Polyomino16x16(img, Options{Quantizer: PaletteQuantizer(autoPalette)}) }},
 		{name: "space-filling-16x16", run: func(img *Image) error { return SpaceFilling16x16(img, Options{Quantizer: RGBLevels(4)}) }},
+		{name: "space-filling-morton-16x16", run: func(img *Image) error { return SpaceFillingMorton16x16(img, Options{Quantizer: RGBLevels(4)}) }},
+		{name: "space-filling-serpentine-16x16", run: func(img *Image) error { return SpaceFillingSerpentine16x16(img, Options{Quantizer: RGBLevels(4)}) }},
 		{name: "void-and-cluster-64x64", run: func(img *Image) error { return VoidAndCluster64x64(img, Options{Quantizer: RGBLevels(4)}) }},
 		{name: "blue-noise-multitone-64x64", run: func(img *Image) error { return BlueNoiseMultitone64x64(img, Options{Quantizer: GrayLevels(2)}) }},
 		{name: "yliluoma-1", run: func(img *Image) error { return Yliluoma1(img, Options{Quantizer: PaletteQuantizer(autoPalette)}) }},
@@ -48,6 +56,8 @@ func BenchmarkAlgorithmsFixtureCat(b *testing.B) {
 		{name: "ostromoukhov", run: func(img *Image) error { return Ostromoukhov(img, Options{Quantizer: GrayLevels(2)}) }},
 		{name: "zhou-fang", run: func(img *Image) error { return ZhouFang(img, Options{Quantizer: GrayLevels(2), Seed: 7}) }},
 		{name: "balanced-variable", run: func(img *Image) error { return BalancedVariable(img, Options{Quantizer: GrayLevels(2)}) }},
+		{name: "smooth-variable", run: func(img *Image) error { return SmoothVariable(img, Options{Quantizer: GrayLevels(2)}) }},
+		{name: "punchy-variable", run: func(img *Image) error { return PunchyVariable(img, Options{Quantizer: GrayLevels(2)}) }},
 		{name: "threshold", run: func(img *Image) error { return Threshold(img, Options{Quantizer: GrayLevels(2), Threshold: 127}) }},
 		{name: "random", run: func(img *Image) error {
 			return Random(img, Options{Quantizer: GrayLevels(2), Seed: 7, RandomStrength: 40})
