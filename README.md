@@ -101,7 +101,19 @@ Generate only DBS outputs:
 ./scripts/render_dbs_examples.sh
 ```
 
-Both scripts create [examples-out](/Users/admin/Documents/dither/gither/examples-out:1) if needed and clear old image outputs before rendering.
+Both scripts:
+
+- scan every image file in [images](/Users/admin/Documents/dither/gither/images:1) by default
+- create [examples-out](/Users/admin/Documents/dither/gither/examples-out:1) if needed
+- clear old image outputs before rendering
+- name outputs as `gither-[image]-[detail].png`
+
+You can also point either script at a single image file or a different directory:
+
+```bash
+./scripts/render_examples.sh ./images/test.png
+./scripts/render_examples.sh ./images ./examples-out
+```
 
 ## Library Quick Start
 
