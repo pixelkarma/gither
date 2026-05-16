@@ -340,7 +340,7 @@ func TestDBSDeterministic(t *testing.T) {
 		t.Run(string(seed), func(t *testing.T) {
 			imgA, _ := NewPackedImage(grayRamp(16, 16), 16, 16, Gray8)
 			imgB, _ := NewPackedImage(grayRamp(16, 16), 16, 16, Gray8)
-			opts := DBSOptions{Seed: seed, Passes: 1, Threshold: 127}
+			opts := DBSOptions{Seed: seed, Passes: 1, Threshold: 127, MoveMode: DBSMoveHybrid, Neighborhood: 1}
 			if err := DirectBinarySearch(imgA, opts); err != nil {
 				t.Fatal(err)
 			}
@@ -354,6 +354,32 @@ func TestDBSDeterministic(t *testing.T) {
 				if v != 0 && v != 255 {
 					t.Fatalf("unexpected binary value %d", v)
 				}
+			}
+		})
+	}
+}
+
+func TestDBSMoveModesDeterministic(t *testing.T) {
+	modes := []DBSMoveMode{DBSMoveFlip, DBSMoveSwap, DBSMoveHybrid}
+	for _, mode := range modes {
+		t.Run(string(mode), func(t *testing.T) {
+			imgA, _ := NewPackedImage(grayRamp(12, 12), 12, 12, Gray8)
+			imgB, _ := NewPackedImage(grayRamp(12, 12), 12, 12, Gray8)
+			opts := DBSOptions{
+				Seed:         DBSSeedThreshold,
+				Passes:       1,
+				Threshold:    127,
+				MoveMode:     mode,
+				Neighborhood: 1,
+			}
+			if err := DirectBinarySearch(imgA, opts); err != nil {
+				t.Fatal(err)
+			}
+			if err := DirectBinarySearch(imgB, opts); err != nil {
+				t.Fatal(err)
+			}
+			if hashBytes(imgA.Pix) != hashBytes(imgB.Pix) {
+				t.Fatal("DBS move mode should be deterministic")
 			}
 		})
 	}

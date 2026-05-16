@@ -70,7 +70,13 @@ func BenchmarkAlgorithmsFixtureCat(b *testing.B) {
 		{name: "am-fm-hybrid-64x64", run: func(img *Image) error { return AMFMHybrid64x64(img, Options{Quantizer: GrayLevels(2), Seed: 7}) }},
 		{name: "clustered-am-fm-64x64", run: func(img *Image) error { return ClusteredAMFM64x64(img, Options{Quantizer: GrayLevels(2), Seed: 7}) }},
 		{name: "dbs", run: func(img *Image) error {
-			return DirectBinarySearch(img, DBSOptions{Seed: DBSSeedThreshold, Passes: 1, Threshold: 127})
+			return DirectBinarySearch(img, DBSOptions{
+				Seed:         DBSSeedThreshold,
+				Passes:       1,
+				Threshold:    127,
+				MoveMode:     DBSMoveHybrid,
+				Neighborhood: 1,
+			})
 		}},
 	}
 	for _, bc := range cases {

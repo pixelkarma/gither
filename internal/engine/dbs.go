@@ -8,17 +8,24 @@ import (
 )
 
 type DBSSeed string
+type DBSMoveMode string
 
 const (
 	DBSSeedThreshold DBSSeed = "threshold"
 	DBSSeedBayer     DBSSeed = "bayer"
 	DBSSeedFloyd     DBSSeed = "floyd-steinberg"
+
+	DBSMoveFlip   DBSMoveMode = "flip"
+	DBSMoveSwap   DBSMoveMode = "swap"
+	DBSMoveHybrid DBSMoveMode = "hybrid"
 )
 
 type DBSOptions struct {
-	Seed      DBSSeed
-	Passes    int
-	Threshold uint8
+	Seed         DBSSeed
+	Passes       int
+	Threshold    uint8
+	MoveMode     DBSMoveMode
+	Neighborhood int
 }
 
 func (o DBSOptions) withDefaults() DBSOptions {
@@ -27,6 +34,12 @@ func (o DBSOptions) withDefaults() DBSOptions {
 	}
 	if o.Passes <= 0 {
 		o.Passes = 1
+	}
+	if o.MoveMode == "" {
+		o.MoveMode = DBSMoveHybrid
+	}
+	if o.Neighborhood <= 0 {
+		o.Neighborhood = 1
 	}
 	return o
 }
@@ -49,14 +62,17 @@ func DirectBinarySearch(img *core.Image, opts DBSOptions) error {
 			for x := 0; x < img.Width; x++ {
 				idx := y*img.Width + x
 				original := binary[idx]
-				delta := dbsPixelDelta(original)
-				before, after := localFilteredErrorDelta(filtered, targetFiltered, img.Width, img.Height, x, y, delta)
-				if after+1e-9 < before {
+				bestMode, bestSwapX, bestSwapY, bestBefore, bestAfter := dbsBestMove(binary, filtered, targetFiltered, img.Width, img.Height, x, y, opts)
+				if bestAfter+1e-9 < bestBefore {
 					improved = true
-					binary[idx] = original ^ 0xff
-					applyFilteredDelta(filtered, img.Width, img.Height, x, y, delta)
-				} else {
-					binary[idx] = original
+					switch bestMode {
+					case DBSMoveFlip:
+						delta := dbsPixelDelta(original)
+						binary[idx] = original ^ 0xff
+						applyFilteredDelta(filtered, img.Width, img.Height, x, y, delta)
+					case DBSMoveSwap:
+						dbsApplySwap(binary, filtered, img.Width, img.Height, x, y, bestSwapX, bestSwapY)
+					}
 				}
 			}
 		}
@@ -125,6 +141,62 @@ func dbsSeedPlane(target []uint8, width, height int, opts DBSOptions) ([]uint8, 
 	return img.Pix, nil
 }
 
+func dbsBestMove(binary []uint8, filtered, targetFiltered []float32, width, height, x, y int, opts DBSOptions) (DBSMoveMode, int, int, float64, float64) {
+	bestMode := DBSMoveFlip
+	bestSwapX, bestSwapY := -1, -1
+	bestBefore, bestAfter := 0.0, 0.0
+	hasCandidate := false
+	if opts.MoveMode == DBSMoveFlip || opts.MoveMode == DBSMoveHybrid {
+		delta := dbsPixelDelta(binary[y*width+x])
+		before, after := localFilteredErrorDelta(filtered, targetFiltered, width, height, x, y, delta)
+		bestBefore, bestAfter = before, after
+		hasCandidate = true
+	}
+	if opts.MoveMode == DBSMoveSwap || opts.MoveMode == DBSMoveHybrid {
+		swapBefore, swapAfter, sx, sy, ok := bestSwapCandidate(binary, filtered, targetFiltered, width, height, x, y, opts.Neighborhood)
+		if ok && (!hasCandidate || swapAfter < bestAfter) {
+			bestMode = DBSMoveSwap
+			bestSwapX, bestSwapY = sx, sy
+			bestBefore, bestAfter = swapBefore, swapAfter
+			hasCandidate = true
+		}
+	}
+	if !hasCandidate {
+		return DBSMoveFlip, -1, -1, 0, 0
+	}
+	return bestMode, bestSwapX, bestSwapY, bestBefore, bestAfter
+}
+
+func bestSwapCandidate(binary []uint8, filtered, targetFiltered []float32, width, height, x, y, radius int) (float64, float64, int, int, bool) {
+	origin := binary[y*width+x]
+	bestBefore, bestAfter := 0.0, 0.0
+	bestX, bestY := -1, -1
+	found := false
+	for dy := -radius; dy <= radius; dy++ {
+		for dx := -radius; dx <= radius; dx++ {
+			if dx == 0 && dy == 0 {
+				continue
+			}
+			nx := x + dx
+			ny := y + dy
+			if nx < 0 || ny < 0 || nx >= width || ny >= height {
+				continue
+			}
+			other := binary[ny*width+nx]
+			if other == origin {
+				continue
+			}
+			before, after := localSwapErrorDelta(filtered, targetFiltered, width, height, x, y, nx, ny, dbsPixelDelta(origin), dbsPixelDelta(other))
+			if !found || after < bestAfter {
+				bestBefore, bestAfter = before, after
+				bestX, bestY = nx, ny
+				found = true
+			}
+		}
+	}
+	return bestBefore, bestAfter, bestX, bestY, found
+}
+
 func localFilteredErrorDelta(filtered, targetFiltered []float32, width, height, x, y int, delta float32) (float64, float64) {
 	var before, after float64
 	for yy := maxDBSInt(0, y-1); yy <= minDBSInt(height-1, y+1); yy++ {
@@ -159,6 +231,47 @@ func applyFilteredDelta(filtered []float32, width, height, x, y int, delta float
 			filtered[yy*width+xx] += delta * dbsKernelContribution(xx-x, yy-y)
 		}
 	}
+}
+
+func localSwapErrorDelta(filtered, targetFiltered []float32, width, height, x1, y1, x2, y2 int, delta1, delta2 float32) (float64, float64) {
+	minX := maxDBSInt(0, minDBSInt(x1, x2)-1)
+	maxX := minDBSInt(width-1, maxDBSInt(x1, x2)+1)
+	minY := maxDBSInt(0, minDBSInt(y1, y2)-1)
+	maxY := minDBSInt(height-1, maxDBSInt(y1, y2)+1)
+	var before, after float64
+	for yy := minY; yy <= maxY; yy++ {
+		for xx := minX; xx <= maxX; xx++ {
+			idx := yy*width + xx
+			current := filtered[idx]
+			updated := current
+			if absDBSInt(xx-x1) <= 1 && absDBSInt(yy-y1) <= 1 {
+				updated += delta1 * dbsKernelContribution(xx-x1, yy-y1)
+			}
+			if absDBSInt(xx-x2) <= 1 && absDBSInt(yy-y2) <= 1 {
+				updated += delta2 * dbsKernelContribution(xx-x2, yy-y2)
+			}
+			diffBefore := float64(current - targetFiltered[idx])
+			diffAfter := float64(updated - targetFiltered[idx])
+			before += diffBefore * diffBefore
+			after += diffAfter * diffAfter
+		}
+	}
+	return before, after
+}
+
+func dbsApplySwap(binary []uint8, filtered []float32, width, height, x1, y1, x2, y2 int) {
+	idx1 := y1*width + x1
+	idx2 := y2*width + x2
+	v1 := binary[idx1]
+	v2 := binary[idx2]
+	if v1 == v2 {
+		return
+	}
+	delta1 := dbsPixelDelta(v1)
+	delta2 := dbsPixelDelta(v2)
+	binary[idx1], binary[idx2] = v2, v1
+	applyFilteredDelta(filtered, width, height, x1, y1, delta1)
+	applyFilteredDelta(filtered, width, height, x2, y2, delta2)
 }
 
 func dbsKernelWeight(kx, ky int) float32 {
@@ -224,4 +337,11 @@ func maxDBSInt(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func absDBSInt(v int) int {
+	if v < 0 {
+		return -v
+	}
+	return v
 }
