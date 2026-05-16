@@ -9,6 +9,7 @@ import (
 
 type DBSSeed string
 type DBSMoveMode string
+type DBSMetric string
 
 const (
 	DBSSeedThreshold DBSSeed = "threshold"
@@ -18,6 +19,10 @@ const (
 	DBSMoveFlip   DBSMoveMode = "flip"
 	DBSMoveSwap   DBSMoveMode = "swap"
 	DBSMoveHybrid DBSMoveMode = "hybrid"
+
+	DBSMetricFast       DBSMetric = "fast"
+	DBSMetricBalanced   DBSMetric = "balanced"
+	DBSMetricPerceptual DBSMetric = "perceptual"
 )
 
 type DBSOptions struct {
@@ -26,6 +31,15 @@ type DBSOptions struct {
 	Threshold    uint8
 	MoveMode     DBSMoveMode
 	Neighborhood int
+	Metric       DBSMetric
+}
+
+type dbsMetricSpec struct {
+	Radius       int
+	Diameter     int
+	Weights      []float32
+	EdgeAware    bool
+	EdgeStrength float32
 }
 
 func (o DBSOptions) withDefaults() DBSOptions {
@@ -41,6 +55,9 @@ func (o DBSOptions) withDefaults() DBSOptions {
 	if o.Neighborhood <= 0 {
 		o.Neighborhood = 1
 	}
+	if o.Metric == "" {
+		o.Metric = DBSMetricBalanced
+	}
 	return o
 }
 
@@ -49,29 +66,31 @@ func DirectBinarySearch(img *core.Image, opts DBSOptions) error {
 		return err
 	}
 	opts = opts.withDefaults()
+	metric := dbsMetricSpecFor(opts.Metric)
 	target := grayscalePlane(img)
-	targetFiltered := filteredGrayPlane(target, img.Width, img.Height)
+	targetFiltered := filteredGrayPlane(target, img.Width, img.Height, metric)
+	errorWeights := dbsErrorWeights(target, img.Width, img.Height, metric)
 	binary, err := dbsSeedPlane(target, img.Width, img.Height, opts)
 	if err != nil {
 		return err
 	}
-	filtered := filteredGrayPlane(binary, img.Width, img.Height)
+	filtered := filteredGrayPlane(binary, img.Width, img.Height, metric)
 	for pass := 0; pass < opts.Passes; pass++ {
 		improved := false
 		for y := 0; y < img.Height; y++ {
 			for x := 0; x < img.Width; x++ {
 				idx := y*img.Width + x
 				original := binary[idx]
-				bestMode, bestSwapX, bestSwapY, bestBefore, bestAfter := dbsBestMove(binary, filtered, targetFiltered, img.Width, img.Height, x, y, opts)
+				bestMode, bestSwapX, bestSwapY, bestBefore, bestAfter := dbsBestMove(binary, filtered, targetFiltered, errorWeights, img.Width, img.Height, x, y, opts, metric)
 				if bestAfter+1e-9 < bestBefore {
 					improved = true
 					switch bestMode {
 					case DBSMoveFlip:
 						delta := dbsPixelDelta(original)
 						binary[idx] = original ^ 0xff
-						applyFilteredDelta(filtered, img.Width, img.Height, x, y, delta)
+						applyFilteredDelta(filtered, img.Width, img.Height, x, y, delta, metric)
 					case DBSMoveSwap:
-						dbsApplySwap(binary, filtered, img.Width, img.Height, x, y, bestSwapX, bestSwapY)
+						dbsApplySwap(binary, filtered, img.Width, img.Height, x, y, bestSwapX, bestSwapY, metric)
 					}
 				}
 			}
@@ -102,11 +121,11 @@ func grayscalePlane(img *core.Image) []uint8 {
 	return out
 }
 
-func filteredGrayPlane(gray []uint8, width, height int) []float32 {
+func filteredGrayPlane(gray []uint8, width, height int, metric dbsMetricSpec) []float32 {
 	out := make([]float32, len(gray))
 	for y := 0; y < height; y++ {
 		for x := 0; x < width; x++ {
-			out[y*width+x] = filteredBinaryValue(gray, width, height, x, y)
+			out[y*width+x] = filteredBinaryValue(gray, width, height, x, y, metric)
 		}
 	}
 	return out
@@ -141,19 +160,19 @@ func dbsSeedPlane(target []uint8, width, height int, opts DBSOptions) ([]uint8, 
 	return img.Pix, nil
 }
 
-func dbsBestMove(binary []uint8, filtered, targetFiltered []float32, width, height, x, y int, opts DBSOptions) (DBSMoveMode, int, int, float64, float64) {
+func dbsBestMove(binary []uint8, filtered, targetFiltered, errorWeights []float32, width, height, x, y int, opts DBSOptions, metric dbsMetricSpec) (DBSMoveMode, int, int, float64, float64) {
 	bestMode := DBSMoveFlip
 	bestSwapX, bestSwapY := -1, -1
 	bestBefore, bestAfter := 0.0, 0.0
 	hasCandidate := false
 	if opts.MoveMode == DBSMoveFlip || opts.MoveMode == DBSMoveHybrid {
 		delta := dbsPixelDelta(binary[y*width+x])
-		before, after := localFilteredErrorDelta(filtered, targetFiltered, width, height, x, y, delta)
+		before, after := localFilteredErrorDelta(filtered, targetFiltered, errorWeights, width, height, x, y, delta, metric)
 		bestBefore, bestAfter = before, after
 		hasCandidate = true
 	}
 	if opts.MoveMode == DBSMoveSwap || opts.MoveMode == DBSMoveHybrid {
-		swapBefore, swapAfter, sx, sy, ok := bestSwapCandidate(binary, filtered, targetFiltered, width, height, x, y, opts.Neighborhood)
+		swapBefore, swapAfter, sx, sy, ok := bestSwapCandidate(binary, filtered, targetFiltered, errorWeights, width, height, x, y, opts.Neighborhood, metric)
 		if ok && (!hasCandidate || swapAfter < bestAfter) {
 			bestMode = DBSMoveSwap
 			bestSwapX, bestSwapY = sx, sy
@@ -167,7 +186,7 @@ func dbsBestMove(binary []uint8, filtered, targetFiltered []float32, width, heig
 	return bestMode, bestSwapX, bestSwapY, bestBefore, bestAfter
 }
 
-func bestSwapCandidate(binary []uint8, filtered, targetFiltered []float32, width, height, x, y, radius int) (float64, float64, int, int, bool) {
+func bestSwapCandidate(binary []uint8, filtered, targetFiltered, errorWeights []float32, width, height, x, y, radius int, metric dbsMetricSpec) (float64, float64, int, int, bool) {
 	origin := binary[y*width+x]
 	bestBefore, bestAfter := 0.0, 0.0
 	bestX, bestY := -1, -1
@@ -186,7 +205,7 @@ func bestSwapCandidate(binary []uint8, filtered, targetFiltered []float32, width
 			if other == origin {
 				continue
 			}
-			before, after := localSwapErrorDelta(filtered, targetFiltered, width, height, x, y, nx, ny, dbsPixelDelta(origin), dbsPixelDelta(other))
+			before, after := localSwapErrorDelta(filtered, targetFiltered, errorWeights, width, height, x, y, nx, ny, dbsPixelDelta(origin), dbsPixelDelta(other), metric)
 			if !found || after < bestAfter {
 				bestBefore, bestAfter = before, after
 				bestX, bestY = nx, ny
@@ -197,69 +216,71 @@ func bestSwapCandidate(binary []uint8, filtered, targetFiltered []float32, width
 	return bestBefore, bestAfter, bestX, bestY, found
 }
 
-func localFilteredErrorDelta(filtered, targetFiltered []float32, width, height, x, y int, delta float32) (float64, float64) {
+func localFilteredErrorDelta(filtered, targetFiltered, errorWeights []float32, width, height, x, y int, delta float32, metric dbsMetricSpec) (float64, float64) {
 	var before, after float64
-	for yy := maxDBSInt(0, y-1); yy <= minDBSInt(height-1, y+1); yy++ {
-		for xx := maxDBSInt(0, x-1); xx <= minDBSInt(width-1, x+1); xx++ {
+	for yy := maxDBSInt(0, y-metric.Radius); yy <= minDBSInt(height-1, y+metric.Radius); yy++ {
+		for xx := maxDBSInt(0, x-metric.Radius); xx <= minDBSInt(width-1, x+metric.Radius); xx++ {
 			idx := yy*width + xx
 			current := filtered[idx]
+			weight := float64(errorWeights[idx])
 			diffBefore := float64(current - targetFiltered[idx])
-			diffAfter := float64(current + delta*dbsKernelContribution(xx-x, yy-y) - targetFiltered[idx])
-			before += diffBefore * diffBefore
-			after += diffAfter * diffAfter
+			diffAfter := float64(current + delta*metric.contribution(xx-x, yy-y) - targetFiltered[idx])
+			before += diffBefore * diffBefore * weight
+			after += diffAfter * diffAfter * weight
 		}
 	}
 	return before, after
 }
 
-func filteredBinaryValue(binary []uint8, width, height, x, y int) float32 {
+func filteredBinaryValue(binary []uint8, width, height, x, y int, metric dbsMetricSpec) float32 {
 	var sum float32
-	for ky := -1; ky <= 1; ky++ {
+	for ky := -metric.Radius; ky <= metric.Radius; ky++ {
 		yy := clampDBSInt(y+ky, 0, height-1)
-		for kx := -1; kx <= 1; kx++ {
+		for kx := -metric.Radius; kx <= metric.Radius; kx++ {
 			xx := clampDBSInt(x+kx, 0, width-1)
-			weight := dbsKernelWeight(kx, ky)
+			weight := metric.contribution(kx, ky)
 			sum += mathx.ByteToUnit(binary[yy*width+xx]) * weight
 		}
 	}
-	return sum / 16.0
+	return sum
 }
 
-func applyFilteredDelta(filtered []float32, width, height, x, y int, delta float32) {
-	for yy := maxDBSInt(0, y-1); yy <= minDBSInt(height-1, y+1); yy++ {
-		for xx := maxDBSInt(0, x-1); xx <= minDBSInt(width-1, x+1); xx++ {
-			filtered[yy*width+xx] += delta * dbsKernelContribution(xx-x, yy-y)
+func applyFilteredDelta(filtered []float32, width, height, x, y int, delta float32, metric dbsMetricSpec) {
+	for yy := maxDBSInt(0, y-metric.Radius); yy <= minDBSInt(height-1, y+metric.Radius); yy++ {
+		for xx := maxDBSInt(0, x-metric.Radius); xx <= minDBSInt(width-1, x+metric.Radius); xx++ {
+			filtered[yy*width+xx] += delta * metric.contribution(xx-x, yy-y)
 		}
 	}
 }
 
-func localSwapErrorDelta(filtered, targetFiltered []float32, width, height, x1, y1, x2, y2 int, delta1, delta2 float32) (float64, float64) {
-	minX := maxDBSInt(0, minDBSInt(x1, x2)-1)
-	maxX := minDBSInt(width-1, maxDBSInt(x1, x2)+1)
-	minY := maxDBSInt(0, minDBSInt(y1, y2)-1)
-	maxY := minDBSInt(height-1, maxDBSInt(y1, y2)+1)
+func localSwapErrorDelta(filtered, targetFiltered, errorWeights []float32, width, height, x1, y1, x2, y2 int, delta1, delta2 float32, metric dbsMetricSpec) (float64, float64) {
+	minX := maxDBSInt(0, minDBSInt(x1, x2)-metric.Radius)
+	maxX := minDBSInt(width-1, maxDBSInt(x1, x2)+metric.Radius)
+	minY := maxDBSInt(0, minDBSInt(y1, y2)-metric.Radius)
+	maxY := minDBSInt(height-1, maxDBSInt(y1, y2)+metric.Radius)
 	var before, after float64
 	for yy := minY; yy <= maxY; yy++ {
 		for xx := minX; xx <= maxX; xx++ {
 			idx := yy*width + xx
 			current := filtered[idx]
 			updated := current
-			if absDBSInt(xx-x1) <= 1 && absDBSInt(yy-y1) <= 1 {
-				updated += delta1 * dbsKernelContribution(xx-x1, yy-y1)
+			if absDBSInt(xx-x1) <= metric.Radius && absDBSInt(yy-y1) <= metric.Radius {
+				updated += delta1 * metric.contribution(xx-x1, yy-y1)
 			}
-			if absDBSInt(xx-x2) <= 1 && absDBSInt(yy-y2) <= 1 {
-				updated += delta2 * dbsKernelContribution(xx-x2, yy-y2)
+			if absDBSInt(xx-x2) <= metric.Radius && absDBSInt(yy-y2) <= metric.Radius {
+				updated += delta2 * metric.contribution(xx-x2, yy-y2)
 			}
+			weight := float64(errorWeights[idx])
 			diffBefore := float64(current - targetFiltered[idx])
 			diffAfter := float64(updated - targetFiltered[idx])
-			before += diffBefore * diffBefore
-			after += diffAfter * diffAfter
+			before += diffBefore * diffBefore * weight
+			after += diffAfter * diffAfter * weight
 		}
 	}
 	return before, after
 }
 
-func dbsApplySwap(binary []uint8, filtered []float32, width, height, x1, y1, x2, y2 int) {
+func dbsApplySwap(binary []uint8, filtered []float32, width, height, x1, y1, x2, y2 int, metric dbsMetricSpec) {
 	idx1 := y1*width + x1
 	idx2 := y2*width + x2
 	v1 := binary[idx1]
@@ -270,22 +291,93 @@ func dbsApplySwap(binary []uint8, filtered []float32, width, height, x1, y1, x2,
 	delta1 := dbsPixelDelta(v1)
 	delta2 := dbsPixelDelta(v2)
 	binary[idx1], binary[idx2] = v2, v1
-	applyFilteredDelta(filtered, width, height, x1, y1, delta1)
-	applyFilteredDelta(filtered, width, height, x2, y2, delta2)
+	applyFilteredDelta(filtered, width, height, x1, y1, delta1, metric)
+	applyFilteredDelta(filtered, width, height, x2, y2, delta2, metric)
 }
 
-func dbsKernelWeight(kx, ky int) float32 {
-	if kx == 0 && ky == 0 {
-		return 4
+func dbsMetricSpecFor(metric DBSMetric) dbsMetricSpec {
+	switch metric {
+	case DBSMetricFast:
+		return newDBSMetricSpec([][]float32{
+			{1, 2, 1},
+			{2, 4, 2},
+			{1, 2, 1},
+		}, false, 0)
+	case DBSMetricPerceptual:
+		return newDBSMetricSpec([][]float32{
+			{1, 6, 15, 20, 15, 6, 1},
+			{6, 36, 90, 120, 90, 36, 6},
+			{15, 90, 225, 300, 225, 90, 15},
+			{20, 120, 300, 400, 300, 120, 20},
+			{15, 90, 225, 300, 225, 90, 15},
+			{6, 36, 90, 120, 90, 36, 6},
+			{1, 6, 15, 20, 15, 6, 1},
+		}, true, 1.5)
+	default:
+		return newDBSMetricSpec([][]float32{
+			{1, 4, 6, 4, 1},
+			{4, 16, 24, 16, 4},
+			{6, 24, 36, 24, 6},
+			{4, 16, 24, 16, 4},
+			{1, 4, 6, 4, 1},
+		}, false, 0)
 	}
-	if kx == 0 || ky == 0 {
-		return 2
-	}
-	return 1
 }
 
-func dbsKernelContribution(kx, ky int) float32 {
-	return dbsKernelWeight(kx, ky) / 16.0
+func newDBSMetricSpec(kernel [][]float32, edgeAware bool, edgeStrength float32) dbsMetricSpec {
+	diameter := len(kernel)
+	weights := make([]float32, 0, diameter*diameter)
+	var sum float32
+	for _, row := range kernel {
+		for _, weight := range row {
+			sum += weight
+		}
+	}
+	if sum == 0 {
+		sum = 1
+	}
+	for _, row := range kernel {
+		for _, weight := range row {
+			weights = append(weights, weight/sum)
+		}
+	}
+	return dbsMetricSpec{
+		Radius:       diameter / 2,
+		Diameter:     diameter,
+		Weights:      weights,
+		EdgeAware:    edgeAware,
+		EdgeStrength: edgeStrength,
+	}
+}
+
+func (m dbsMetricSpec) contribution(kx, ky int) float32 {
+	if kx < -m.Radius || kx > m.Radius || ky < -m.Radius || ky > m.Radius {
+		return 0
+	}
+	return m.Weights[(ky+m.Radius)*m.Diameter+(kx+m.Radius)]
+}
+
+func dbsErrorWeights(target []uint8, width, height int, metric dbsMetricSpec) []float32 {
+	weights := make([]float32, width*height)
+	for i := range weights {
+		weights[i] = 1
+	}
+	if !metric.EdgeAware {
+		return weights
+	}
+	for y := 0; y < height; y++ {
+		up := maxDBSInt(0, y-1)
+		down := minDBSInt(height-1, y+1)
+		for x := 0; x < width; x++ {
+			left := maxDBSInt(0, x-1)
+			right := minDBSInt(width-1, x+1)
+			gx := absDBSInt(int(target[y*width+right]) - int(target[y*width+left]))
+			gy := absDBSInt(int(target[down*width+x]) - int(target[up*width+x]))
+			gradient := float32(gx+gy) / 510.0
+			weights[y*width+x] = 1 + gradient*metric.EdgeStrength
+		}
+	}
+	return weights
 }
 
 func dbsPixelDelta(original uint8) float32 {

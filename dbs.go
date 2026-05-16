@@ -4,6 +4,7 @@ import "gither/internal/engine"
 
 type DBSSeed = engine.DBSSeed
 type DBSMoveMode = engine.DBSMoveMode
+type DBSMetric = engine.DBSMetric
 type DBSOptions = engine.DBSOptions
 
 const (
@@ -14,6 +15,10 @@ const (
 	DBSMoveFlip   = engine.DBSMoveFlip
 	DBSMoveSwap   = engine.DBSMoveSwap
 	DBSMoveHybrid = engine.DBSMoveHybrid
+
+	DBSMetricFast       = engine.DBSMetricFast
+	DBSMetricBalanced   = engine.DBSMetricBalanced
+	DBSMetricPerceptual = engine.DBSMetricPerceptual
 )
 
 func DirectBinarySearch(img *Image, opts DBSOptions) error {

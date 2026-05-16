@@ -37,6 +37,7 @@ type config struct {
 	dbsPasses      int
 	dbsMove        string
 	dbsRadius      int
+	dbsMetric      string
 	mapPath        string
 	mapWidth       int
 	mapHeight      int
@@ -72,6 +73,7 @@ func parseFlags() config {
 	flag.IntVar(&cfg.dbsPasses, "dbs-passes", 1, "DBS optimization passes")
 	flag.StringVar(&cfg.dbsMove, "dbs-move", "hybrid", "DBS move mode: flip|swap|hybrid")
 	flag.IntVar(&cfg.dbsRadius, "dbs-radius", 1, "DBS swap neighborhood radius")
+	flag.StringVar(&cfg.dbsMetric, "dbs-metric", "balanced", "DBS metric: fast|balanced|perceptual")
 	flag.StringVar(&cfg.mapPath, "map", "", "path to custom ordered map file")
 	flag.IntVar(&cfg.mapWidth, "map-width", 0, "custom ordered map width")
 	flag.IntVar(&cfg.mapHeight, "map-height", 0, "custom ordered map height")
@@ -338,6 +340,7 @@ func applyAlgorithm(img *gither.Image, cfg config, opts gither.Options) error {
 			Threshold:    uint8(clampInt(cfg.threshold, 0, 255)),
 			MoveMode:     parseDBSMoveMode(cfg.dbsMove),
 			Neighborhood: cfg.dbsRadius,
+			Metric:       parseDBSMetric(cfg.dbsMetric),
 		})
 	default:
 		return fmt.Errorf("unsupported algorithm %q", cfg.algorithm)
@@ -466,5 +469,16 @@ func parseDBSMoveMode(value string) gither.DBSMoveMode {
 		return gither.DBSMoveSwap
 	default:
 		return gither.DBSMoveHybrid
+	}
+}
+
+func parseDBSMetric(value string) gither.DBSMetric {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "fast":
+		return gither.DBSMetricFast
+	case "perceptual":
+		return gither.DBSMetricPerceptual
+	default:
+		return gither.DBSMetricBalanced
 	}
 }

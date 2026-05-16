@@ -340,7 +340,7 @@ func TestDBSDeterministic(t *testing.T) {
 		t.Run(string(seed), func(t *testing.T) {
 			imgA, _ := NewPackedImage(grayRamp(16, 16), 16, 16, Gray8)
 			imgB, _ := NewPackedImage(grayRamp(16, 16), 16, 16, Gray8)
-			opts := DBSOptions{Seed: seed, Passes: 1, Threshold: 127, MoveMode: DBSMoveHybrid, Neighborhood: 1}
+			opts := DBSOptions{Seed: seed, Passes: 1, Threshold: 127, MoveMode: DBSMoveHybrid, Neighborhood: 1, Metric: DBSMetricBalanced}
 			if err := DirectBinarySearch(imgA, opts); err != nil {
 				t.Fatal(err)
 			}
@@ -371,6 +371,7 @@ func TestDBSMoveModesDeterministic(t *testing.T) {
 				Threshold:    127,
 				MoveMode:     mode,
 				Neighborhood: 1,
+				Metric:       DBSMetricBalanced,
 			}
 			if err := DirectBinarySearch(imgA, opts); err != nil {
 				t.Fatal(err)
@@ -380,6 +381,33 @@ func TestDBSMoveModesDeterministic(t *testing.T) {
 			}
 			if hashBytes(imgA.Pix) != hashBytes(imgB.Pix) {
 				t.Fatal("DBS move mode should be deterministic")
+			}
+		})
+	}
+}
+
+func TestDBSMetricsDeterministic(t *testing.T) {
+	metrics := []DBSMetric{DBSMetricFast, DBSMetricBalanced, DBSMetricPerceptual}
+	for _, metric := range metrics {
+		t.Run(string(metric), func(t *testing.T) {
+			imgA, _ := NewPackedImage(grayRamp(12, 12), 12, 12, Gray8)
+			imgB, _ := NewPackedImage(grayRamp(12, 12), 12, 12, Gray8)
+			opts := DBSOptions{
+				Seed:         DBSSeedThreshold,
+				Passes:       1,
+				Threshold:    127,
+				MoveMode:     DBSMoveHybrid,
+				Neighborhood: 1,
+				Metric:       metric,
+			}
+			if err := DirectBinarySearch(imgA, opts); err != nil {
+				t.Fatal(err)
+			}
+			if err := DirectBinarySearch(imgB, opts); err != nil {
+				t.Fatal(err)
+			}
+			if hashBytes(imgA.Pix) != hashBytes(imgB.Pix) {
+				t.Fatal("DBS metric should be deterministic")
 			}
 		})
 	}
@@ -431,6 +459,48 @@ func TestFixtureAlgorithmsDeterministic(t *testing.T) {
 			name: "balanced-variable",
 			run:  func(img *Image) error { return BalancedVariable(img, Options{Quantizer: GrayLevels(2)}) },
 			hash: 4432248508225494701,
+		},
+		{
+			name: "dbs-fast",
+			run: func(img *Image) error {
+				return DirectBinarySearch(img, DBSOptions{
+					Seed:         DBSSeedThreshold,
+					Passes:       1,
+					Threshold:    127,
+					MoveMode:     DBSMoveHybrid,
+					Neighborhood: 1,
+					Metric:       DBSMetricFast,
+				})
+			},
+			hash: 14760988332519077620,
+		},
+		{
+			name: "dbs-balanced",
+			run: func(img *Image) error {
+				return DirectBinarySearch(img, DBSOptions{
+					Seed:         DBSSeedThreshold,
+					Passes:       1,
+					Threshold:    127,
+					MoveMode:     DBSMoveHybrid,
+					Neighborhood: 1,
+					Metric:       DBSMetricBalanced,
+				})
+			},
+			hash: 7371833554584279101,
+		},
+		{
+			name: "dbs-perceptual",
+			run: func(img *Image) error {
+				return DirectBinarySearch(img, DBSOptions{
+					Seed:         DBSSeedThreshold,
+					Passes:       1,
+					Threshold:    127,
+					MoveMode:     DBSMoveHybrid,
+					Neighborhood: 1,
+					Metric:       DBSMetricPerceptual,
+				})
+			},
+			hash: 7225122755161863901,
 		},
 	}
 	for _, tc := range cases {
