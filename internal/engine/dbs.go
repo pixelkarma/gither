@@ -496,37 +496,45 @@ func nearestPaletteIndex(palette core.Palette, r, g, b uint8) int {
 	return best
 }
 
-func nearestPaletteCandidates(palette core.Palette, r, g, b uint8, limit int) []int {
-	type candidate struct {
-		idx  int
-		dist uint32
+func nearestPaletteCandidates(palette core.Palette, r, g, b uint8, limit int, out *[4]int) int {
+	if limit > len(out) {
+		limit = len(out)
 	}
-	best := make([]candidate, 0, limit)
+	var bestIdx [4]int
+	var bestDist [4]uint32
+	count := 0
 	for i, c := range palette {
 		dist := mathx.RGBDistanceSq(r, g, b, c.R, c.G, c.B)
-		insertAt := len(best)
-		for j := 0; j < len(best); j++ {
-			if dist < best[j].dist {
+		insertAt := count
+		for j := 0; j < count; j++ {
+			if dist < bestDist[j] {
 				insertAt = j
 				break
 			}
 		}
-		if insertAt < limit {
-			best = append(best, candidate{})
-			copy(best[insertAt+1:], best[insertAt:])
-			best[insertAt] = candidate{idx: i, dist: dist}
-			if len(best) > limit {
-				best = best[:limit]
+		if count < limit {
+			for j := count; j > insertAt; j-- {
+				bestIdx[j] = bestIdx[j-1]
+				bestDist[j] = bestDist[j-1]
 			}
-		} else if len(best) < limit {
-			best = append(best, candidate{idx: i, dist: dist})
+			bestIdx[insertAt] = i
+			bestDist[insertAt] = dist
+			count++
+			continue
+		}
+		if insertAt < limit {
+			for j := limit - 1; j > insertAt; j-- {
+				bestIdx[j] = bestIdx[j-1]
+				bestDist[j] = bestDist[j-1]
+			}
+			bestIdx[insertAt] = i
+			bestDist[insertAt] = dist
 		}
 	}
-	out := make([]int, len(best))
-	for i := range best {
-		out[i] = best[i].idx
+	for i := 0; i < count; i++ {
+		out[i] = bestIdx[i]
 	}
-	return out
+	return count
 }
 
 func filteredPalettePlanes(indexes []uint8, palette core.Palette, width, height int, metric dbsMetricSpec) ([]float32, []float32, []float32) {
@@ -670,8 +678,10 @@ func dbsBestColorMove(indexes []uint8, fr, fg, fb []float32, targetR, targetG, t
 	bestBefore, bestAfter := 0.0, 0.0
 	bestA, bestB := uint8(current), uint8(current)
 	hasCandidate := false
-	candidates := nearestPaletteCandidates(palette, targetR[idx], targetG[idx], targetB[idx], minDBSInt(4, len(palette)))
-	for _, candidate := range candidates {
+	var candidates [4]int
+	candidateCount := nearestPaletteCandidates(palette, targetR[idx], targetG[idx], targetB[idx], minDBSInt(4, len(palette)), &candidates)
+	for i := 0; i < candidateCount; i++ {
+		candidate := candidates[i]
 		if candidate == current {
 			continue
 		}
@@ -1165,11 +1175,8 @@ func localClusterSwapDelta(binary, target []uint8, width, height, x1, y1, x2, y2
 }
 
 func localClusterPenalty(binary, target []uint8, width, height int, opts DBSOptions, changes []dbsPixelChange) (float64, float64) {
-	overrides := make(map[int]uint8, len(changes))
-	seen := make(map[uint64]struct{}, len(changes)*8)
-	for _, change := range changes {
-		overrides[change.y*width+change.x] = change.newVal
-	}
+	var seen [16]uint64
+	seenCount := 0
 	var before, after float64
 	for _, change := range changes {
 		idx := change.y*width + change.x
@@ -1185,10 +1192,11 @@ func localClusterPenalty(binary, target []uint8, width, height int, opts DBSOpti
 				}
 				nidx := ny*width + nx
 				key := dbsEdgeKey(idx, nidx)
-				if _, ok := seen[key]; ok {
+				if dbsEdgeSeen(seen[:seenCount], key) {
 					continue
 				}
-				seen[key] = struct{}{}
+				seen[seenCount] = key
+				seenCount++
 				diagonalScale := 1.0
 				if dx != 0 && dy != 0 {
 					diagonalScale = 0.70710678118
@@ -1196,14 +1204,8 @@ func localClusterPenalty(binary, target []uint8, width, height int, opts DBSOpti
 				weight := clusterEdgeWeight(target, idx, nidx, opts) * diagonalScale
 				oldA := binary[idx]
 				oldB := binary[nidx]
-				newA := oldA
-				if v, ok := overrides[idx]; ok {
-					newA = v
-				}
-				newB := oldB
-				if v, ok := overrides[nidx]; ok {
-					newB = v
-				}
+				newA := dbsChangedValue(changes, idx, oldA, width)
+				newB := dbsChangedValue(changes, nidx, oldB, width)
 				if oldA != oldB {
 					before += weight
 				}
@@ -1214,6 +1216,24 @@ func localClusterPenalty(binary, target []uint8, width, height int, opts DBSOpti
 		}
 	}
 	return before, after
+}
+
+func dbsChangedValue(changes []dbsPixelChange, idx int, fallback uint8, width int) uint8 {
+	for _, change := range changes {
+		if change.y*width+change.x == idx {
+			return change.newVal
+		}
+	}
+	return fallback
+}
+
+func dbsEdgeSeen(edges []uint64, key uint64) bool {
+	for _, edge := range edges {
+		if edge == key {
+			return true
+		}
+	}
+	return false
 }
 
 func fullClusterPenalty(binary, target []uint8, width, height int, opts DBSOptions) float64 {
