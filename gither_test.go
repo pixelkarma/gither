@@ -7,6 +7,7 @@ import (
 	_ "image/png"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -907,13 +908,17 @@ func TestPaletteExtractionOptions(t *testing.T) {
 
 func mustLoadFixtureForTest(tb testing.TB) *Image {
 	tb.Helper()
-	path := filepath.Join("/Users/admin/Documents/dither/gither", "images", "test.png")
-	file, err := os.Open(path)
+	_, callerFile, _, ok := runtime.Caller(0)
+	if !ok {
+		tb.Fatal("unable to resolve test file path")
+	}
+	path := filepath.Join(filepath.Dir(callerFile), "images", "test.png")
+	f, err := os.Open(path)
 	if err != nil {
 		tb.Fatal(err)
 	}
-	defer file.Close()
-	src, _, err := image.Decode(file)
+	defer f.Close()
+	src, _, err := image.Decode(f)
 	if err != nil {
 		tb.Fatal(err)
 	}
