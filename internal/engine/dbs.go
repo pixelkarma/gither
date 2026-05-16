@@ -42,21 +42,19 @@ func DirectBinarySearch(img *core.Image, opts DBSOptions) error {
 	if err != nil {
 		return err
 	}
+	filtered := filteredGrayPlane(binary, img.Width, img.Height)
 	for pass := 0; pass < opts.Passes; pass++ {
 		improved := false
 		for y := 0; y < img.Height; y++ {
 			for x := 0; x < img.Width; x++ {
 				idx := y*img.Width + x
-				before := localFilteredError(binary, targetFiltered, img.Width, img.Height, x, y)
 				original := binary[idx]
-				if original == 0 {
-					binary[idx] = 255
-				} else {
-					binary[idx] = 0
-				}
-				after := localFilteredError(binary, targetFiltered, img.Width, img.Height, x, y)
+				delta := dbsPixelDelta(original)
+				before, after := localFilteredErrorDelta(filtered, targetFiltered, img.Width, img.Height, x, y, delta)
 				if after+1e-9 < before {
 					improved = true
+					binary[idx] = original ^ 0xff
+					applyFilteredDelta(filtered, img.Width, img.Height, x, y, delta)
 				} else {
 					binary[idx] = original
 				}
@@ -127,16 +125,19 @@ func dbsSeedPlane(target []uint8, width, height int, opts DBSOptions) ([]uint8, 
 	return img.Pix, nil
 }
 
-func localFilteredError(binary []uint8, targetFiltered []float32, width, height, x, y int) float64 {
-	var score float64
+func localFilteredErrorDelta(filtered, targetFiltered []float32, width, height, x, y int, delta float32) (float64, float64) {
+	var before, after float64
 	for yy := maxDBSInt(0, y-1); yy <= minDBSInt(height-1, y+1); yy++ {
 		for xx := maxDBSInt(0, x-1); xx <= minDBSInt(width-1, x+1); xx++ {
 			idx := yy*width + xx
-			diff := float64(filteredBinaryValue(binary, width, height, xx, yy) - targetFiltered[idx])
-			score += diff * diff
+			current := filtered[idx]
+			diffBefore := float64(current - targetFiltered[idx])
+			diffAfter := float64(current + delta*dbsKernelContribution(xx-x, yy-y) - targetFiltered[idx])
+			before += diffBefore * diffBefore
+			after += diffAfter * diffAfter
 		}
 	}
-	return score
+	return before, after
 }
 
 func filteredBinaryValue(binary []uint8, width, height, x, y int) float32 {
@@ -152,6 +153,14 @@ func filteredBinaryValue(binary []uint8, width, height, x, y int) float32 {
 	return sum / 16.0
 }
 
+func applyFilteredDelta(filtered []float32, width, height, x, y int, delta float32) {
+	for yy := maxDBSInt(0, y-1); yy <= minDBSInt(height-1, y+1); yy++ {
+		for xx := maxDBSInt(0, x-1); xx <= minDBSInt(width-1, x+1); xx++ {
+			filtered[yy*width+xx] += delta * dbsKernelContribution(xx-x, yy-y)
+		}
+	}
+}
+
 func dbsKernelWeight(kx, ky int) float32 {
 	if kx == 0 && ky == 0 {
 		return 4
@@ -160,6 +169,17 @@ func dbsKernelWeight(kx, ky int) float32 {
 		return 2
 	}
 	return 1
+}
+
+func dbsKernelContribution(kx, ky int) float32 {
+	return dbsKernelWeight(kx, ky) / 16.0
+}
+
+func dbsPixelDelta(original uint8) float32 {
+	if original == 0 {
+		return 1.0
+	}
+	return -1.0
 }
 
 func writeBinaryToImage(img *core.Image, binary []uint8) {
