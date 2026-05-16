@@ -33,6 +33,8 @@ type config struct {
 	threshold      int
 	seed           uint64
 	randomStrength int
+	dbsSeed        string
+	dbsPasses      int
 	mapPath        string
 	mapWidth       int
 	mapHeight      int
@@ -64,6 +66,8 @@ func parseFlags() config {
 	flag.IntVar(&cfg.threshold, "threshold", 127, "binary threshold in 0..255")
 	flag.Uint64Var(&cfg.seed, "seed", 1, "random seed for random binary")
 	flag.IntVar(&cfg.randomStrength, "random-strength", 32, "random threshold jitter in 0..127")
+	flag.StringVar(&cfg.dbsSeed, "dbs-seed", "threshold", "DBS seed: threshold|bayer|floyd-steinberg")
+	flag.IntVar(&cfg.dbsPasses, "dbs-passes", 1, "DBS optimization passes")
 	flag.StringVar(&cfg.mapPath, "map", "", "path to custom ordered map file")
 	flag.IntVar(&cfg.mapWidth, "map-width", 0, "custom ordered map width")
 	flag.IntVar(&cfg.mapHeight, "map-height", 0, "custom ordered map height")
@@ -77,7 +81,7 @@ func parseFlags() config {
 		fmt.Fprintf(flag.CommandLine.Output(), "  diffusion: floyd-steinberg, false-floyd-steinberg, jjn, stucki, burkes, sierra, two-row-sierra, sierra-lite, stevenson-arce, atkinson\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  variable diffusion: ostromoukhov, zhou-fang, balanced-variable, balanced-variable-thresholded, smooth-variable, punchy-variable\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  stochastic: threshold, random\n")
-		fmt.Fprintf(flag.CommandLine.Output(), "  advanced: riemersma, am-fm-hybrid-64x64, clustered-am-fm-64x64\n\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "  advanced: riemersma, am-fm-hybrid-64x64, clustered-am-fm-64x64, dbs\n\n")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -323,6 +327,12 @@ func applyAlgorithm(img *gither.Image, cfg config, opts gither.Options) error {
 		return gither.AMFMHybrid64x64(img, opts)
 	case "clustered-am-fm-64x64":
 		return gither.ClusteredAMFM64x64(img, opts)
+	case "dbs":
+		return gither.DirectBinarySearch(img, gither.DBSOptions{
+			Seed:      parseDBSSeed(cfg.dbsSeed),
+			Passes:    cfg.dbsPasses,
+			Threshold: uint8(clampInt(cfg.threshold, 0, 255)),
+		})
 	default:
 		return fmt.Errorf("unsupported algorithm %q", cfg.algorithm)
 	}
@@ -428,5 +438,16 @@ func parsePaletteSort(value string) gither.PaletteSortMode {
 		return gither.PaletteSortFrequency
 	default:
 		return gither.PaletteSortRGB
+	}
+}
+
+func parseDBSSeed(value string) gither.DBSSeed {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "bayer":
+		return gither.DBSSeedBayer
+	case "floyd-steinberg", "floyd", "fs":
+		return gither.DBSSeedFloyd
+	default:
+		return gither.DBSSeedThreshold
 	}
 }

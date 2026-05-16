@@ -334,6 +334,31 @@ func TestAMFMModesDeterministic(t *testing.T) {
 	}
 }
 
+func TestDBSDeterministic(t *testing.T) {
+	seeds := []DBSSeed{DBSSeedThreshold, DBSSeedBayer, DBSSeedFloyd}
+	for _, seed := range seeds {
+		t.Run(string(seed), func(t *testing.T) {
+			imgA, _ := NewPackedImage(grayRamp(16, 16), 16, 16, Gray8)
+			imgB, _ := NewPackedImage(grayRamp(16, 16), 16, 16, Gray8)
+			opts := DBSOptions{Seed: seed, Passes: 1, Threshold: 127}
+			if err := DirectBinarySearch(imgA, opts); err != nil {
+				t.Fatal(err)
+			}
+			if err := DirectBinarySearch(imgB, opts); err != nil {
+				t.Fatal(err)
+			}
+			if hashBytes(imgA.Pix) != hashBytes(imgB.Pix) {
+				t.Fatal("DBS output should be deterministic")
+			}
+			for _, v := range imgA.Pix {
+				if v != 0 && v != 255 {
+					t.Fatalf("unexpected binary value %d", v)
+				}
+			}
+		})
+	}
+}
+
 func TestVariableDiffusionPreservesRGBAAlpha(t *testing.T) {
 	pix := rgbaGradient(12, 12)
 	alpha := make([]uint8, 12*12)
