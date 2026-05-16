@@ -1,3 +1,4 @@
+// Package stdimage bridges gither.Image with the Go standard library image types.
 package stdimage
 
 import (
@@ -12,6 +13,7 @@ import (
 	"github.com/pixelkarma/gither"
 )
 
+// LoadPath decodes an image file and converts it into a gither.Image.
 func LoadPath(path string) (*gither.Image, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -26,6 +28,7 @@ func LoadPath(path string) (*gither.Image, error) {
 	return FromImage(img)
 }
 
+// SavePath encodes an image to disk, using JPEG for .jpg/.jpeg and PNG otherwise.
 func SavePath(path string, img image.Image, jpegQuality int) error {
 	file, err := os.Create(path)
 	if err != nil {
@@ -41,6 +44,7 @@ func SavePath(path string, img image.Image, jpegQuality int) error {
 	}
 }
 
+// FromImage converts a standard library image into a gither.Image.
 func FromImage(src image.Image) (*gither.Image, error) {
 	bounds := src.Bounds()
 	width := bounds.Dx()
@@ -82,6 +86,7 @@ func FromImage(src image.Image) (*gither.Image, error) {
 	}
 }
 
+// ToImage converts a gither.Image into a standard library image.Image.
 func ToImage(src *gither.Image) image.Image {
 	switch src.Format {
 	case gither.Gray8:
