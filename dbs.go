@@ -39,3 +39,7 @@ func DirectBinarySearch(img *Image, opts DBSOptions) error {
 func ClusteredDBS(img *Image, opts DBSOptions) error {
 	return engine.ClusteredDBS(img, opts)
 }
+
+func MultiLevelDBS(img *Image, opts DBSOptions) error {
+	return engine.MultiLevelDBS(img, opts)
+}

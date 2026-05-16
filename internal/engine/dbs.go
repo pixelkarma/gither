@@ -39,6 +39,7 @@ const (
 
 type DBSOptions struct {
 	Seed             DBSSeed
+	Levels           int
 	Passes           int
 	Threshold        uint8
 	MoveMode         DBSMoveMode
@@ -75,6 +76,9 @@ func (o DBSOptions) withDefaults() DBSOptions {
 	if o.Seed == "" {
 		o.Seed = DBSSeedThreshold
 	}
+	if o.Levels < 2 {
+		o.Levels = 2
+	}
 	if o.Passes <= 0 {
 		o.Passes = 1
 	}
@@ -108,6 +112,7 @@ func DirectBinarySearch(img *core.Image, opts DBSOptions) error {
 
 func ClusteredDBS(img *core.Image, opts DBSOptions) error {
 	opts = opts.withDefaults()
+	opts.Levels = 2
 	if opts.Seed == DBSSeedThreshold {
 		opts.Seed = DBSSeedCluster16
 	}
@@ -116,6 +121,50 @@ func ClusteredDBS(img *core.Image, opts DBSOptions) error {
 	}
 	opts.ClusterToneAware = true
 	return runDBS(img, opts)
+}
+
+func MultiLevelDBS(img *core.Image, opts DBSOptions) error {
+	if err := img.Validate(); err != nil {
+		return err
+	}
+	opts = opts.withDefaults()
+	target := grayscalePlane(img)
+	metric := dbsMetricSpecFor(opts.Metric)
+	targetFiltered := filteredGrayPlane(target, img.Width, img.Height, metric)
+	errorWeights := dbsErrorWeights(target, img.Width, img.Height, metric)
+	levelValues := dbsLevelValues(opts.Levels)
+	gray, err := dbsSeedGrayPlane(target, img.Width, img.Height, opts)
+	if err != nil {
+		return err
+	}
+	bestGray := append([]uint8(nil), gray...)
+	bestFiltered := filteredGrayPlane(bestGray, img.Width, img.Height, metric)
+	bestScore := dbsFullScore(bestFiltered, targetFiltered, errorWeights)
+	totalReport := DBSReport{}
+	for restart := 0; restart <= opts.Restarts; restart++ {
+		workingGray := append([]uint8(nil), gray...)
+		workingFiltered := filteredGrayPlane(workingGray, img.Width, img.Height, metric)
+		report := dbsOptimizeMultiLevel(workingGray, workingFiltered, targetFiltered, errorWeights, img.Width, img.Height, opts, metric, levelValues, restart)
+		score := dbsFullScore(workingFiltered, targetFiltered, errorWeights)
+		if restart == 0 || score < bestScore {
+			bestScore = score
+			copy(bestGray, workingGray)
+			copy(bestFiltered, workingFiltered)
+		}
+		totalReport.PassesRun += report.PassesRun
+		totalReport.AcceptedMoves += report.AcceptedMoves
+		totalReport.FlipMoves += report.FlipMoves
+		totalReport.SwapMoves += report.SwapMoves
+		if report.LastImprovedPass > 0 {
+			totalReport.LastImprovedPass = report.LastImprovedPass
+		}
+		totalReport.RestartsUsed = restart
+	}
+	if opts.Report != nil {
+		*opts.Report = totalReport
+	}
+	writeGrayToImage(img, bestGray)
+	return nil
 }
 
 func runDBS(img *core.Image, opts DBSOptions) error {
@@ -320,6 +369,205 @@ func dbsSeedPlane(target []uint8, width, height int, opts DBSOptions) ([]uint8, 
 		}
 	}
 	return img.Pix, nil
+}
+
+func dbsSeedGrayPlane(target []uint8, width, height int, opts DBSOptions) ([]uint8, error) {
+	seed := append([]uint8(nil), target...)
+	img, err := core.NewPackedImage(seed, width, height, core.Gray8)
+	if err != nil {
+		return nil, err
+	}
+	baseOpts := core.Options{Quantizer: core.GrayLevels(opts.Levels), Threshold: opts.Threshold}
+	switch opts.Seed {
+	case DBSSeedBayer:
+		ordered := OrderedMap{Values: maps.Bayer8x8, Width: 8, Height: 8, Strength: core.DefaultOrderedStrength}
+		if err := ApplyOrdered(img, ordered, baseOpts); err != nil {
+			return nil, err
+		}
+	case DBSSeedFloyd:
+		if err := ApplyDiffusion(img, baseOpts, kernels.FloydSteinberg); err != nil {
+			return nil, err
+		}
+	case DBSSeedCluster16:
+		ordered := OrderedMap{Values: maps.GenerateClusterDot16x16(), Width: 16, Height: 16, Strength: core.DefaultOrderedStrength}
+		if err := ApplyOrdered(img, ordered, baseOpts); err != nil {
+			return nil, err
+		}
+	default:
+		for i := range img.Pix {
+			img.Pix[i] = mathx.QuantizeByte(img.Pix[i], opts.Levels)
+		}
+	}
+	return img.Pix, nil
+}
+
+func dbsLevelValues(levels int) []uint8 {
+	out := make([]uint8, levels)
+	for i := 0; i < levels; i++ {
+		if levels == 1 {
+			out[i] = 0
+			continue
+		}
+		out[i] = uint8((i*255 + (levels-1)/2) / (levels - 1))
+	}
+	return out
+}
+
+func dbsLevelIndex(values []uint8, v uint8) int {
+	best := 0
+	bestDist := absDBSInt(int(v) - int(values[0]))
+	for i := 1; i < len(values); i++ {
+		dist := absDBSInt(int(v) - int(values[i]))
+		if dist < bestDist {
+			best = i
+			bestDist = dist
+		}
+	}
+	return best
+}
+
+func dbsOptimizeMultiLevel(gray []uint8, filtered, targetFiltered, errorWeights []float32, width, height int, opts DBSOptions, metric dbsMetricSpec, levels []uint8, restart int) DBSReport {
+	report := DBSReport{RestartsUsed: restart}
+	noImprovePasses := 0
+	for pass := 0; pass < opts.Passes; pass++ {
+		improved := false
+		report.PassesRun++
+		radius := dbsEffectiveRadius(opts, pass)
+		dbsIteratePixels(width, height, opts, restart, pass, func(x, y int) {
+			bestKind, nx, ny, before, after, newA, newB := dbsBestMultiLevelMove(gray, filtered, targetFiltered, errorWeights, width, height, x, y, radius, metric, levels)
+			if after+1e-9 < before {
+				improved = true
+				report.AcceptedMoves++
+				report.LastImprovedPass = report.PassesRun
+				idx := y*width + x
+				switch bestKind {
+				case DBSMoveFlip:
+					report.FlipMoves++
+					delta := mathx.ByteToUnit(newA) - mathx.ByteToUnit(gray[idx])
+					gray[idx] = newA
+					applyFilteredDelta(filtered, width, height, x, y, delta, metric)
+				case DBSMoveSwap:
+					report.SwapMoves++
+					applyMultiLevelExchange(gray, filtered, width, height, x, y, nx, ny, newA, newB, metric)
+				}
+			}
+		})
+		if !improved {
+			noImprovePasses++
+			if noImprovePasses >= opts.MaxNoImprove {
+				break
+			}
+			continue
+		}
+		noImprovePasses = 0
+	}
+	return report
+}
+
+func dbsBestMultiLevelMove(gray []uint8, filtered, targetFiltered, errorWeights []float32, width, height, x, y, radius int, metric dbsMetricSpec, levels []uint8) (DBSMoveMode, int, int, float64, float64, uint8, uint8) {
+	idx := y*width + x
+	current := gray[idx]
+	levelIdx := dbsLevelIndex(levels, current)
+	bestMode := DBSMoveFlip
+	bestX, bestY := -1, -1
+	bestBefore, bestAfter := 0.0, 0.0
+	bestA, bestB := current, current
+	hasCandidate := false
+	tryLevel := func(candidate uint8) {
+		if candidate == current {
+			return
+		}
+		delta := mathx.ByteToUnit(candidate) - mathx.ByteToUnit(current)
+		before, after := localFilteredErrorDelta(filtered, targetFiltered, errorWeights, width, height, x, y, delta, metric)
+		if !hasCandidate || after < bestAfter {
+			bestMode = DBSMoveFlip
+			bestBefore, bestAfter = before, after
+			bestA, bestB = candidate, current
+			hasCandidate = true
+		}
+	}
+	if levelIdx > 0 {
+		tryLevel(levels[levelIdx-1])
+	}
+	if levelIdx+1 < len(levels) {
+		tryLevel(levels[levelIdx+1])
+	}
+	swapBefore, swapAfter, sx, sy, sa, sb, ok := bestMultiLevelExchange(gray, filtered, targetFiltered, errorWeights, width, height, x, y, radius, metric, levels)
+	if ok && (!hasCandidate || swapAfter < bestAfter) {
+		bestMode = DBSMoveSwap
+		bestX, bestY = sx, sy
+		bestBefore, bestAfter = swapBefore, swapAfter
+		bestA, bestB = sa, sb
+		hasCandidate = true
+	}
+	if !hasCandidate {
+		return DBSMoveFlip, -1, -1, 0, 0, current, current
+	}
+	return bestMode, bestX, bestY, bestBefore, bestAfter, bestA, bestB
+}
+
+func bestMultiLevelExchange(gray []uint8, filtered, targetFiltered, errorWeights []float32, width, height, x, y, radius int, metric dbsMetricSpec, levels []uint8) (float64, float64, int, int, uint8, uint8, bool) {
+	idx := y*width + x
+	current := gray[idx]
+	levelIdx := dbsLevelIndex(levels, current)
+	bestBefore, bestAfter := 0.0, 0.0
+	bestX, bestY := -1, -1
+	bestA, bestB := current, current
+	found := false
+	for dy := -radius; dy <= radius; dy++ {
+		for dx := -radius; dx <= radius; dx++ {
+			if dx == 0 && dy == 0 {
+				continue
+			}
+			nx := x + dx
+			ny := y + dy
+			if nx < 0 || ny < 0 || nx >= width || ny >= height {
+				continue
+			}
+			nidx := ny*width + nx
+			other := gray[nidx]
+			otherIdx := dbsLevelIndex(levels, other)
+			try := func(newIdxA, newIdxB int) {
+				if newIdxA < 0 || newIdxA >= len(levels) || newIdxB < 0 || newIdxB >= len(levels) {
+					return
+				}
+				newA, newB := levels[newIdxA], levels[newIdxB]
+				if newA == current && newB == other {
+					return
+				}
+				deltaA := mathx.ByteToUnit(newA) - mathx.ByteToUnit(current)
+				deltaB := mathx.ByteToUnit(newB) - mathx.ByteToUnit(other)
+				before, after := localMultiSwapErrorDelta(filtered, targetFiltered, errorWeights, width, height, x, y, nx, ny, deltaA, deltaB, metric)
+				if !found || after < bestAfter {
+					bestBefore, bestAfter = before, after
+					bestX, bestY = nx, ny
+					bestA, bestB = newA, newB
+					found = true
+				}
+			}
+			if levelIdx+1 < len(levels) && otherIdx > 0 {
+				try(levelIdx+1, otherIdx-1)
+			}
+			if levelIdx > 0 && otherIdx+1 < len(levels) {
+				try(levelIdx-1, otherIdx+1)
+			}
+		}
+	}
+	return bestBefore, bestAfter, bestX, bestY, bestA, bestB, found
+}
+
+func localMultiSwapErrorDelta(filtered, targetFiltered, errorWeights []float32, width, height, x1, y1, x2, y2 int, delta1, delta2 float32, metric dbsMetricSpec) (float64, float64) {
+	return localSwapErrorDelta(filtered, targetFiltered, errorWeights, width, height, x1, y1, x2, y2, delta1, delta2, metric)
+}
+
+func applyMultiLevelExchange(gray []uint8, filtered []float32, width, height, x1, y1, x2, y2 int, newA, newB uint8, metric dbsMetricSpec) {
+	idx1 := y1*width + x1
+	idx2 := y2*width + x2
+	delta1 := mathx.ByteToUnit(newA) - mathx.ByteToUnit(gray[idx1])
+	delta2 := mathx.ByteToUnit(newB) - mathx.ByteToUnit(gray[idx2])
+	gray[idx1], gray[idx2] = newA, newB
+	applyFilteredDelta(filtered, width, height, x1, y1, delta1, metric)
+	applyFilteredDelta(filtered, width, height, x2, y2, delta2, metric)
 }
 
 func dbsBestMove(binary []uint8, filtered []float32, target []uint8, targetFiltered, errorWeights []float32, width, height, x, y int, opts DBSOptions, metric dbsMetricSpec) (DBSMoveMode, int, int, float64, float64) {
@@ -703,6 +951,26 @@ func writeBinaryToImage(img *core.Image, binary []uint8) {
 		row := img.Row(y)
 		for x := 0; x < img.Width; x++ {
 			v := binary[y*img.Width+x]
+			offset := x * channels
+			switch img.Format {
+			case core.Gray8:
+				row[offset] = v
+			case core.RGB8:
+				row[offset], row[offset+1], row[offset+2] = v, v, v
+			case core.RGBA8:
+				alpha := row[offset+3]
+				row[offset], row[offset+1], row[offset+2], row[offset+3] = v, v, v, alpha
+			}
+		}
+	}
+}
+
+func writeGrayToImage(img *core.Image, gray []uint8) {
+	channels := img.ChannelCount()
+	for y := 0; y < img.Height; y++ {
+		row := img.Row(y)
+		for x := 0; x < img.Width; x++ {
+			v := gray[y*img.Width+x]
 			offset := x * channels
 			switch img.Format {
 			case core.Gray8:

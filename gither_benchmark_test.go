@@ -112,6 +112,18 @@ func BenchmarkAlgorithmsFixtureCat(b *testing.B) {
 				ClusterToneAware: true,
 			})
 		}},
+		{name: "multilevel-dbs", run: func(img *Image) error {
+			return MultiLevelDBS(img, DBSOptions{
+				Levels:       4,
+				Passes:       1,
+				Threshold:    127,
+				MoveMode:     DBSMoveHybrid,
+				Neighborhood: 1,
+				Metric:       DBSMetricBalanced,
+				ScanOrder:    DBSScanSerpentine,
+				RandomSeed:   7,
+			})
+		}},
 	}
 	for _, bc := range cases {
 		b.Run(bc.name, func(b *testing.B) {

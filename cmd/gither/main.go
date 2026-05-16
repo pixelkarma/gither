@@ -101,7 +101,7 @@ func parseFlags() config {
 		fmt.Fprintf(flag.CommandLine.Output(), "  diffusion: floyd-steinberg, false-floyd-steinberg, jjn, stucki, burkes, sierra, two-row-sierra, sierra-lite, stevenson-arce, atkinson\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  variable diffusion: ostromoukhov, zhou-fang, balanced-variable, balanced-variable-thresholded, smooth-variable, punchy-variable\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  stochastic: threshold, random\n")
-		fmt.Fprintf(flag.CommandLine.Output(), "  advanced: riemersma, am-fm-hybrid-64x64, clustered-am-fm-64x64, dbs, clustered-dbs\n\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "  advanced: riemersma, am-fm-hybrid-64x64, clustered-am-fm-64x64, dbs, clustered-dbs, multilevel-dbs\n\n")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -126,7 +126,7 @@ func run(cfg config) error {
 		return err
 	}
 	var dbsReport *gither.DBSReport
-	if cfg.algorithm == "dbs" || cfg.algorithm == "clustered-dbs" {
+	if cfg.algorithm == "dbs" || cfg.algorithm == "clustered-dbs" || cfg.algorithm == "multilevel-dbs" {
 		dbsReport = &gither.DBSReport{}
 	}
 	if err := applyAlgorithm(img, cfg, opts, dbsReport); err != nil {
@@ -357,6 +357,9 @@ func applyAlgorithm(img *gither.Image, cfg config, opts gither.Options, dbsRepor
 	case "clustered-dbs":
 		dbsOpts := buildDBSOptions(cfg, dbsReport)
 		return gither.ClusteredDBS(img, dbsOpts)
+	case "multilevel-dbs":
+		dbsOpts := buildDBSOptions(cfg, dbsReport)
+		return gither.MultiLevelDBS(img, dbsOpts)
 	default:
 		return fmt.Errorf("unsupported algorithm %q", cfg.algorithm)
 	}
@@ -415,6 +418,7 @@ func clampInt(v, lo, hi int) int {
 func buildDBSOptions(cfg config, report *gither.DBSReport) gither.DBSOptions {
 	opts := gither.DBSOptions{
 		Seed:             parseDBSSeed(cfg.dbsSeed),
+		Levels:           cfg.levels,
 		Passes:           cfg.dbsPasses,
 		Threshold:        uint8(clampInt(cfg.threshold, 0, 255)),
 		MoveMode:         parseDBSMoveMode(cfg.dbsMove),
@@ -466,7 +470,7 @@ func printStats(cfg config, img *gither.Image, dbsReport *gither.DBSReport, star
 	processElapsed := processedAt.Sub(startedAt)
 	saveElapsed := finishedAt.Sub(processedAt)
 	totalElapsed := finishedAt.Sub(startedAt)
-	if (cfg.algorithm == "dbs" || cfg.algorithm == "clustered-dbs") && dbsReport != nil {
+	if (cfg.algorithm == "dbs" || cfg.algorithm == "clustered-dbs" || cfg.algorithm == "multilevel-dbs") && dbsReport != nil {
 		dbsOpts := buildDBSOptions(cfg, nil)
 		fmt.Fprintf(os.Stderr,
 			"stats algorithm=%s quantizer=%s size=%dx%d process_ms=%.3f save_ms=%.3f total_ms=%.3f dbs_schedule=%s dbs_metric=%s dbs_scan=%s dbs_cluster_strength=%.3f dbs_passes_run=%d dbs_moves=%d dbs_flips=%d dbs_swaps=%d dbs_restarts=%d output=%s\n",

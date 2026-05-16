@@ -522,6 +522,54 @@ func TestClusteredDBSDiffersFromDispersed(t *testing.T) {
 	}
 }
 
+func TestMultiLevelDBSDeterministic(t *testing.T) {
+	imgA, _ := NewPackedImage(grayRamp(16, 16), 16, 16, Gray8)
+	imgB, _ := NewPackedImage(grayRamp(16, 16), 16, 16, Gray8)
+	opts := DBSOptions{
+		Levels:       4,
+		Passes:       1,
+		Threshold:    127,
+		MoveMode:     DBSMoveHybrid,
+		Neighborhood: 1,
+		Metric:       DBSMetricBalanced,
+		ScanOrder:    DBSScanSerpentine,
+		RandomSeed:   7,
+	}
+	if err := MultiLevelDBS(imgA, opts); err != nil {
+		t.Fatal(err)
+	}
+	if err := MultiLevelDBS(imgB, opts); err != nil {
+		t.Fatal(err)
+	}
+	if hashBytes(imgA.Pix) != hashBytes(imgB.Pix) {
+		t.Fatal("multilevel DBS should be deterministic")
+	}
+}
+
+func TestMultiLevelDBSUsesMultipleLevels(t *testing.T) {
+	img, _ := NewPackedImage(grayRamp(24, 24), 24, 24, Gray8)
+	opts := DBSOptions{
+		Levels:       4,
+		Passes:       1,
+		Threshold:    127,
+		MoveMode:     DBSMoveHybrid,
+		Neighborhood: 1,
+		Metric:       DBSMetricBalanced,
+		ScanOrder:    DBSScanSerpentine,
+		RandomSeed:   7,
+	}
+	if err := MultiLevelDBS(img, opts); err != nil {
+		t.Fatal(err)
+	}
+	seen := map[uint8]struct{}{}
+	for _, v := range img.Pix {
+		seen[v] = struct{}{}
+	}
+	if len(seen) < 3 {
+		t.Fatalf("expected multilevel DBS to produce 3+ levels, got %d", len(seen))
+	}
+}
+
 func TestVariableDiffusionPreservesRGBAAlpha(t *testing.T) {
 	pix := rgbaGradient(12, 12)
 	alpha := make([]uint8, 12*12)
@@ -627,6 +675,22 @@ func TestFixtureAlgorithmsDeterministic(t *testing.T) {
 				})
 			},
 			hash: 10849702519006246172,
+		},
+		{
+			name: "multilevel-dbs",
+			run: func(img *Image) error {
+				return MultiLevelDBS(img, DBSOptions{
+					Levels:       4,
+					Passes:       1,
+					Threshold:    127,
+					MoveMode:     DBSMoveHybrid,
+					Neighborhood: 1,
+					Metric:       DBSMetricBalanced,
+					ScanOrder:    DBSScanSerpentine,
+					RandomSeed:   7,
+				})
+			},
+			hash: 10788990793269373098,
 		},
 	}
 	for _, tc := range cases {
