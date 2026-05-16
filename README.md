@@ -152,6 +152,8 @@ Render the full algorithm matrix:
 ./scripts/render_examples.sh
 ```
 
+Both example scripts create `examples-out` if needed and clear existing `.png`, `.jpg`, and `.jpeg` files before rendering.
+
 Render only the DBS family:
 
 ```bash

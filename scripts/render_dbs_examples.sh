@@ -4,7 +4,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INPUT_PATH="${1:-$ROOT_DIR/images/cat.png}"
-OUTPUT_DIR="${2:-$ROOT_DIR/examples-out-dbs}"
+OUTPUT_DIR="${2:-$ROOT_DIR/examples-out}"
 BIN_MODE="${GITHER_RUN_MODE:-run}"
 VERBOSE_FLAG=()
 
