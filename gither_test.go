@@ -2,6 +2,11 @@ package gither
 
 import (
 	"hash/fnv"
+	"image"
+	_ "image/jpeg"
+	_ "image/png"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -208,4 +213,110 @@ func TestVariableDiffusionPreservesRGBAAlpha(t *testing.T) {
 			t.Fatalf("alpha changed at pixel %d", i)
 		}
 	}
+}
+
+func TestFixtureAlgorithmsDeterministic(t *testing.T) {
+	fixture := mustLoadFixtureForTest(t)
+	cases := []struct {
+		name string
+		run  func(*Image) error
+		hash uint64
+	}{
+		{
+			name: "bayer-8x8",
+			run:  func(img *Image) error { return Bayer8x8(img, Options{Quantizer: RGBLevels(4)}) },
+			hash: 2059834114531819937,
+		},
+		{
+			name: "floyd-steinberg",
+			run:  func(img *Image) error { return FloydSteinberg(img, Options{Quantizer: RGBLevels(4)}) },
+			hash: 16790227691806807573,
+		},
+		{
+			name: "riemersma",
+			run:  func(img *Image) error { return Riemersma(img, Options{Quantizer: RGBLevels(4)}) },
+			hash: 12317244182241967815,
+		},
+		{
+			name: "balanced-variable",
+			run:  func(img *Image) error { return BalancedVariable(img, Options{Quantizer: GrayLevels(2)}) },
+			hash: 4432248508225494701,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			img := fixture.Clone()
+			if err := tc.run(img); err != nil {
+				t.Fatal(err)
+			}
+			if got := hashBytes(img.Pix); got != tc.hash {
+				t.Fatalf("hash mismatch: got %d want %d", got, tc.hash)
+			}
+		})
+	}
+}
+
+func TestPaletteExtractionOptions(t *testing.T) {
+	fixture := mustLoadFixtureForTest(t)
+	median, err := ExtractPaletteWithOptions(fixture, PaletteExtractOptions{
+		Colors: 8,
+		Method: PaletteMethodMedianCut,
+		Sort:   PaletteSortLuma,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	popular, err := ExtractPaletteWithOptions(fixture, PaletteExtractOptions{
+		Colors: 8,
+		Method: PaletteMethodPopularity,
+		Sort:   PaletteSortFrequency,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(median) != 8 || len(popular) != 8 {
+		t.Fatalf("unexpected palette lengths: median=%d popularity=%d", len(median), len(popular))
+	}
+	if median[0] == popular[0] && median[len(median)-1] == popular[len(popular)-1] {
+		t.Fatal("expected palette methods to produce meaningfully different orderings")
+	}
+}
+
+func mustLoadFixtureForTest(tb testing.TB) *Image {
+	tb.Helper()
+	path := filepath.Join("/Users/admin/Documents/dither/gither", "images", "cat.png")
+	file, err := os.Open(path)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	defer file.Close()
+	src, _, err := image.Decode(file)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	return packedRGBAFromImage(tb, src)
+}
+
+func packedRGBAFromImage(tb testing.TB, src image.Image) *Image {
+	tb.Helper()
+	bounds := src.Bounds()
+	width := bounds.Dx()
+	height := bounds.Dy()
+	pix := make([]uint8, width*height*4)
+	offset := 0
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			r, g, b, a := src.At(x, y).RGBA()
+			pix[offset] = uint8(r >> 8)
+			pix[offset+1] = uint8(g >> 8)
+			pix[offset+2] = uint8(b >> 8)
+			pix[offset+3] = uint8(a >> 8)
+			offset += 4
+		}
+	}
+	img, err := NewPackedImage(pix, width, height, RGBA8)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	return img
 }

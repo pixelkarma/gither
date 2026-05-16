@@ -1,7 +1,5 @@
 package mathx
 
-import "math"
-
 func ClampFloat32(v, lo, hi float32) float32 {
 	if v < lo {
 		return lo
@@ -22,12 +20,20 @@ func ClampInt(v, lo, hi int) int {
 	return v
 }
 
+var byteToUnitLUT = func() [256]float32 {
+	var out [256]float32
+	for i := 0; i < len(out); i++ {
+		out[i] = float32(i) / 255.0
+	}
+	return out
+}()
+
 func ByteToUnit(v uint8) float32 {
-	return float32(v) / 255.0
+	return byteToUnitLUT[v]
 }
 
 func UnitToByte(v float32) uint8 {
-	return uint8(ClampInt(int(math.Round(float64(ClampFloat32(v, 0, 1)*255))), 0, 255))
+	return uint8(ClampFloat32(v, 0, 1)*255 + 0.5)
 }
 
 func LumaByte(r, g, b uint8) uint8 {

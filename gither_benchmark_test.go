@@ -1,25 +1,103 @@
 package gither
 
-import "testing"
+import (
+	"image"
+	_ "image/jpeg"
+	_ "image/png"
+	"os"
+	"path/filepath"
+	"testing"
+)
 
-func BenchmarkFloydSteinbergRGBA1024(b *testing.B) {
-	src := rgbaGradient(1024, 1024)
-	opts := Options{Quantizer: PaletteQuantizer(Palette{{0, 0, 0}, {255, 255, 255}, {0, 255, 128}, {255, 64, 64}})}
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		pix := append([]uint8(nil), src...)
-		img, _ := NewPackedImage(pix, 1024, 1024, RGBA8)
-		_ = FloydSteinberg(img, opts)
+type benchmarkCase struct {
+	name string
+	run  func(*Image) error
+}
+
+func BenchmarkAlgorithmsFixtureCat(b *testing.B) {
+	src := mustLoadFixtureImage(b)
+	paletteOpts := PaletteExtractOptions{Colors: 6, Method: PaletteMethodMedianCut, Sort: PaletteSortRGB}
+	autoPalette, err := ExtractPaletteWithOptions(src, paletteOpts)
+	if err != nil {
+		b.Fatal(err)
+	}
+	cases := []benchmarkCase{
+		{name: "bayer-2x2", run: func(img *Image) error { return Bayer2x2(img, Options{Quantizer: RGBLevels(4)}) }},
+		{name: "bayer-4x4", run: func(img *Image) error { return Bayer4x4(img, Options{Quantizer: RGBLevels(4)}) }},
+		{name: "bayer-8x8", run: func(img *Image) error { return Bayer8x8(img, Options{Quantizer: RGBLevels(4)}) }},
+		{name: "bayer-16x16", run: func(img *Image) error { return Bayer16x16(img, Options{Quantizer: RGBLevels(4)}) }},
+		{name: "cluster-dot-4x4", run: func(img *Image) error { return ClusterDot4x4(img, Options{Quantizer: PaletteQuantizer(autoPalette)}) }},
+		{name: "cluster-dot-8x8", run: func(img *Image) error { return ClusterDot8x8(img, Options{Quantizer: PaletteQuantizer(autoPalette)}) }},
+		{name: "space-filling-16x16", run: func(img *Image) error { return SpaceFilling16x16(img, Options{Quantizer: RGBLevels(4)}) }},
+		{name: "void-and-cluster-64x64", run: func(img *Image) error { return VoidAndCluster64x64(img, Options{Quantizer: RGBLevels(4)}) }},
+		{name: "blue-noise-multitone-64x64", run: func(img *Image) error { return BlueNoiseMultitone64x64(img, Options{Quantizer: GrayLevels(2)}) }},
+		{name: "yliluoma-1", run: func(img *Image) error { return Yliluoma1(img, Options{Quantizer: PaletteQuantizer(autoPalette)}) }},
+		{name: "yliluoma-2", run: func(img *Image) error { return Yliluoma2(img, Options{Quantizer: PaletteQuantizer(autoPalette)}) }},
+		{name: "yliluoma-3", run: func(img *Image) error { return Yliluoma3(img, Options{Quantizer: PaletteQuantizer(autoPalette)}) }},
+		{name: "floyd-steinberg", run: func(img *Image) error { return FloydSteinberg(img, Options{Quantizer: PaletteQuantizer(autoPalette)}) }},
+		{name: "false-floyd-steinberg", run: func(img *Image) error { return FalseFloydSteinberg(img, Options{Quantizer: RGBLevels(4)}) }},
+		{name: "jjn", run: func(img *Image) error { return JarvisJudiceNinke(img, Options{Quantizer: RGBLevels(4)}) }},
+		{name: "stucki", run: func(img *Image) error { return Stucki(img, Options{Quantizer: RGBLevels(4)}) }},
+		{name: "burkes", run: func(img *Image) error { return Burkes(img, Options{Quantizer: RGBLevels(4)}) }},
+		{name: "sierra", run: func(img *Image) error { return Sierra(img, Options{Quantizer: RGBLevels(4)}) }},
+		{name: "two-row-sierra", run: func(img *Image) error { return TwoRowSierra(img, Options{Quantizer: RGBLevels(4)}) }},
+		{name: "sierra-lite", run: func(img *Image) error { return SierraLite(img, Options{Quantizer: RGBLevels(4)}) }},
+		{name: "stevenson-arce", run: func(img *Image) error { return StevensonArce(img, Options{Quantizer: RGBLevels(4)}) }},
+		{name: "atkinson", run: func(img *Image) error { return Atkinson(img, Options{Quantizer: RGBLevels(4)}) }},
+		{name: "ostromoukhov", run: func(img *Image) error { return Ostromoukhov(img, Options{Quantizer: GrayLevels(2)}) }},
+		{name: "zhou-fang", run: func(img *Image) error { return ZhouFang(img, Options{Quantizer: GrayLevels(2), Seed: 7}) }},
+		{name: "balanced-variable", run: func(img *Image) error { return BalancedVariable(img, Options{Quantizer: GrayLevels(2)}) }},
+		{name: "threshold", run: func(img *Image) error { return Threshold(img, Options{Quantizer: GrayLevels(2), Threshold: 127}) }},
+		{name: "random", run: func(img *Image) error {
+			return Random(img, Options{Quantizer: GrayLevels(2), Seed: 7, RandomStrength: 40})
+		}},
+		{name: "riemersma", run: func(img *Image) error { return Riemersma(img, Options{Quantizer: RGBLevels(4)}) }},
+	}
+	for _, bc := range cases {
+		b.Run(bc.name, func(b *testing.B) {
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				img := src.Clone()
+				if err := bc.run(img); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }
 
-func BenchmarkBayer8x8Gray1024(b *testing.B) {
-	src := grayRamp(1024, 1024)
-	opts := Options{Quantizer: GrayLevels(2)}
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		pix := append([]uint8(nil), src...)
-		img, _ := NewPackedImage(pix, 1024, 1024, Gray8)
-		_ = Bayer8x8(img, opts)
+func BenchmarkPaletteExtractionFixtureCat(b *testing.B) {
+	src := mustLoadFixtureImage(b)
+	b.Run("median-cut", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			if _, err := ExtractPaletteWithOptions(src, PaletteExtractOptions{Colors: 8, Method: PaletteMethodMedianCut, Sort: PaletteSortRGB}); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+	b.Run("popularity", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			if _, err := ExtractPaletteWithOptions(src, PaletteExtractOptions{Colors: 8, Method: PaletteMethodPopularity, Sort: PaletteSortFrequency}); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+}
+
+func mustLoadFixtureImage(tb testing.TB) *Image {
+	tb.Helper()
+	path := filepath.Join("/Users/admin/Documents/dither/gither", "images", "cat.png")
+	file, err := os.Open(path)
+	if err != nil {
+		tb.Fatal(err)
 	}
+	defer file.Close()
+	src, _, err := image.Decode(file)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	return packedRGBAFromImage(tb, src)
 }

@@ -26,6 +26,8 @@ type config struct {
 	levels         int
 	palette        string
 	paletteColors  int
+	paletteMethod  string
+	paletteSort    string
 	singleColor    string
 	strength       float64
 	threshold      int
@@ -55,6 +57,8 @@ func parseFlags() config {
 	flag.IntVar(&cfg.levels, "levels", 4, "quantization levels for gray-levels, rgb-levels, or single-color")
 	flag.StringVar(&cfg.palette, "palette", "", "palette colors as '#000000,#ffffff,#ff0000' or 'auto'")
 	flag.IntVar(&cfg.paletteColors, "palette-colors", 8, "palette size when -palette=auto")
+	flag.StringVar(&cfg.paletteMethod, "palette-method", "median-cut", "palette auto method: median-cut|popularity")
+	flag.StringVar(&cfg.paletteSort, "palette-sort", "rgb", "palette auto sort: rgb|luma|frequency")
 	flag.StringVar(&cfg.singleColor, "single-color", "#2f5d62", "single-color quantizer color as hex")
 	flag.Float64Var(&cfg.strength, "strength", 64.0/255.0, "ordered dither strength")
 	flag.IntVar(&cfg.threshold, "threshold", 127, "binary threshold in 0..255")
@@ -71,7 +75,7 @@ func parseFlags() config {
 		fmt.Fprintf(flag.CommandLine.Output(), "  ordered: bayer-2x2, bayer-4x4, bayer-8x8, bayer-16x16, cluster-dot-4x4, cluster-dot-8x8, space-filling-16x16, void-and-cluster-64x64, blue-noise-multitone-64x64, custom-ordered\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  palette-ordered: yliluoma-1, yliluoma-2, yliluoma-3\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  diffusion: floyd-steinberg, false-floyd-steinberg, jjn, stucki, burkes, sierra, two-row-sierra, sierra-lite, stevenson-arce, atkinson\n")
-		fmt.Fprintf(flag.CommandLine.Output(), "  variable diffusion: ostromoukhov, zhou-fang\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "  variable diffusion: ostromoukhov, zhou-fang, balanced-variable, balanced-variable-thresholded\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  stochastic: threshold, random\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  advanced: riemersma\n\n")
 		flag.PrintDefaults()
@@ -156,7 +160,11 @@ func buildQuantizer(cfg config, img *gither.Image) (gither.Quantizer, error) {
 		return gither.RGBLevels(cfg.levels), nil
 	case "palette":
 		if strings.EqualFold(strings.TrimSpace(cfg.palette), "auto") {
-			palette, err := gither.ExtractPalette(img, cfg.paletteColors)
+			palette, err := gither.ExtractPaletteWithOptions(img, gither.PaletteExtractOptions{
+				Colors: cfg.paletteColors,
+				Method: parsePaletteMethod(cfg.paletteMethod),
+				Sort:   parsePaletteSort(cfg.paletteSort),
+			})
 			if err != nil {
 				return gither.Quantizer{}, err
 			}
@@ -275,6 +283,10 @@ func applyAlgorithm(img *gither.Image, cfg config, opts gither.Options) error {
 		return gither.Ostromoukhov(img, opts)
 	case "zhou-fang":
 		return gither.ZhouFang(img, opts)
+	case "balanced-variable":
+		return gither.BalancedVariable(img, opts)
+	case "balanced-variable-thresholded":
+		return gither.BalancedVariableThresholded(img, opts)
 	case "threshold":
 		return gither.Threshold(img, opts)
 	case "random":
@@ -359,12 +371,32 @@ func describeQuantizer(cfg config) string {
 		return fmt.Sprintf("%s(levels=%d)", cfg.quantizer, cfg.levels)
 	case "palette":
 		if strings.EqualFold(strings.TrimSpace(cfg.palette), "auto") {
-			return fmt.Sprintf("palette(auto:%d)", cfg.paletteColors)
+			return fmt.Sprintf("palette(auto:%d,%s,%s)", cfg.paletteColors, cfg.paletteMethod, cfg.paletteSort)
 		}
 		return fmt.Sprintf("palette(explicit)")
 	case "single-color":
 		return fmt.Sprintf("single-color(levels=%d,color=%s)", cfg.levels, strings.TrimSpace(cfg.singleColor))
 	default:
 		return cfg.quantizer
+	}
+}
+
+func parsePaletteMethod(value string) gither.PaletteExtractMethod {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "popularity":
+		return gither.PaletteMethodPopularity
+	default:
+		return gither.PaletteMethodMedianCut
+	}
+}
+
+func parsePaletteSort(value string) gither.PaletteSortMode {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "luma":
+		return gither.PaletteSortLuma
+	case "frequency":
+		return gither.PaletteSortFrequency
+	default:
+		return gither.PaletteSortRGB
 	}
 }

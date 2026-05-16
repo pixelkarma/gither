@@ -15,26 +15,60 @@ type weightedColor struct {
 	weight int
 }
 
+type Method uint8
+type SortMode uint8
+
+const (
+	MethodMedianCut Method = iota
+	MethodPopularity
+)
+
+const (
+	SortRGB SortMode = iota
+	SortLuma
+	SortFrequency
+)
+
+type Options struct {
+	Colors         int
+	Method         Method
+	Sort           SortMode
+	AlphaThreshold uint8
+}
+
 func Extract(img *core.Image, colors int) (core.Palette, error) {
+	return ExtractWithOptions(img, Options{Colors: colors, Method: MethodMedianCut, Sort: SortRGB})
+}
+
+func ExtractWithOptions(img *core.Image, opts Options) (core.Palette, error) {
 	if err := img.Validate(); err != nil {
 		return nil, err
 	}
-	if colors < 1 || colors > 256 {
+	if opts.Colors < 1 || opts.Colors > 256 {
 		return nil, core.ErrPaletteTooLarge
 	}
-	hist := buildHistogram(img)
+	hist := buildHistogram(img, opts.AlphaThreshold)
 	if len(hist) == 0 {
 		return core.Palette{{0, 0, 0}}, nil
 	}
-	if len(hist) <= colors {
+	if len(hist) <= opts.Colors {
 		out := make(core.Palette, len(hist))
 		for i, entry := range hist {
 			out[i] = entry.color
 		}
+		sortPalette(out, hist, opts.Sort)
 		return out, nil
 	}
+	if opts.Method == MethodPopularity {
+		palette := make(core.Palette, 0, opts.Colors)
+		for i := 0; i < opts.Colors && i < len(hist); i++ {
+			palette = append(palette, hist[i].color)
+		}
+		sortPalette(palette, hist, opts.Sort)
+		return palette, nil
+	}
 	boxes := []bucket{{colors: hist}}
-	for len(boxes) < colors {
+	for len(boxes) < opts.Colors {
 		index := pickSplitBucket(boxes)
 		if index < 0 {
 			break
@@ -48,22 +82,17 @@ func Extract(img *core.Image, colors int) (core.Palette, error) {
 		boxes = append(boxes, left, right)
 	}
 	out := make(core.Palette, 0, len(boxes))
+	weights := make([]weightedColor, 0, len(boxes))
 	for _, box := range boxes {
-		out = append(out, averageColor(box.colors))
+		color, weight := averageColor(box.colors)
+		out = append(out, color)
+		weights = append(weights, weightedColor{color: color, weight: weight})
 	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].R != out[j].R {
-			return out[i].R < out[j].R
-		}
-		if out[i].G != out[j].G {
-			return out[i].G < out[j].G
-		}
-		return out[i].B < out[j].B
-	})
+	sortPalette(out, weights, opts.Sort)
 	return out, nil
 }
 
-func buildHistogram(img *core.Image) []weightedColor {
+func buildHistogram(img *core.Image, alphaThreshold uint8) []weightedColor {
 	counts := make(map[uint32]int, img.Width*img.Height)
 	channels := img.ChannelCount()
 	for y := 0; y < img.Height; y++ {
@@ -78,7 +107,7 @@ func buildHistogram(img *core.Image) []weightedColor {
 			case core.RGB8:
 				c = core.Color{R: row[offset], G: row[offset+1], B: row[offset+2]}
 			case core.RGBA8:
-				if row[offset+3] == 0 {
+				if row[offset+3] <= alphaThreshold {
 					continue
 				}
 				c = core.Color{R: row[offset], G: row[offset+1], B: row[offset+2]}
@@ -234,7 +263,7 @@ func bucketRange(colors []weightedColor) int {
 	return max3(int(rMax)-int(rMin), int(gMax)-int(gMin), int(bMax)-int(bMin))
 }
 
-func averageColor(colors []weightedColor) core.Color {
+func averageColor(colors []weightedColor) (core.Color, int) {
 	var rSum, gSum, bSum, weightSum int
 	for _, entry := range colors {
 		rSum += int(entry.color.R) * entry.weight
@@ -243,13 +272,13 @@ func averageColor(colors []weightedColor) core.Color {
 		weightSum += entry.weight
 	}
 	if weightSum == 0 {
-		return core.Color{}
+		return core.Color{}, 0
 	}
 	return core.Color{
 		R: uint8((rSum + weightSum/2) / weightSum),
 		G: uint8((gSum + weightSum/2) / weightSum),
 		B: uint8((bSum + weightSum/2) / weightSum),
-	}
+	}, weightSum
 }
 
 func max3(a, b, c int) int {
@@ -260,4 +289,52 @@ func max3(a, b, c int) int {
 		return b
 	}
 	return c
+}
+
+func sortPalette(palette core.Palette, weights []weightedColor, mode SortMode) {
+	switch mode {
+	case SortLuma:
+		sort.SliceStable(palette, func(i, j int) bool {
+			left := colorWeight(weights, palette[i])
+			right := colorWeight(weights, palette[j])
+			ll := int(palette[i].R)*299 + int(palette[i].G)*587 + int(palette[i].B)*114
+			rl := int(palette[j].R)*299 + int(palette[j].G)*587 + int(palette[j].B)*114
+			if ll != rl {
+				return ll < rl
+			}
+			return left > right
+		})
+	case SortFrequency:
+		sort.SliceStable(palette, func(i, j int) bool {
+			left := colorWeight(weights, palette[i])
+			right := colorWeight(weights, palette[j])
+			if left != right {
+				return left > right
+			}
+			return rgbLess(palette[i], palette[j])
+		})
+	default:
+		sort.SliceStable(palette, func(i, j int) bool {
+			return rgbLess(palette[i], palette[j])
+		})
+	}
+}
+
+func colorWeight(weights []weightedColor, color core.Color) int {
+	for _, entry := range weights {
+		if entry.color == color {
+			return entry.weight
+		}
+	}
+	return 0
+}
+
+func rgbLess(left, right core.Color) bool {
+	if left.R != right.R {
+		return left.R < right.R
+	}
+	if left.G != right.G {
+		return left.G < right.G
+	}
+	return left.B < right.B
 }

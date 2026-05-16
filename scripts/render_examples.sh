@@ -63,6 +63,8 @@ run_gither "cat-atkinson-rgb4.png" -algorithm atkinson -quantizer rgb-levels -le
 # Variable diffusion.
 run_gither "cat-ostromoukhov-gray2.png" -algorithm ostromoukhov -quantizer gray-levels -levels 2
 run_gither "cat-zhou-fang-gray2.png" -algorithm zhou-fang -quantizer gray-levels -levels 2 -seed 7
+run_gither "cat-balanced-variable-gray2.png" -algorithm balanced-variable -quantizer gray-levels -levels 2
+run_gither "cat-balanced-variable-thresholded-gray2.png" -algorithm balanced-variable-thresholded -quantizer gray-levels -levels 2 -seed 7
 
 # Stochastic and path-based modes.
 run_gither "cat-threshold-gray2.png" -algorithm threshold -quantizer gray-levels -levels 2 -threshold 127
