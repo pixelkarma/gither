@@ -413,6 +413,63 @@ func TestDBSMetricsDeterministic(t *testing.T) {
 	}
 }
 
+func TestDBSScanOrdersDeterministic(t *testing.T) {
+	orders := []DBSScanOrder{DBSScanRaster, DBSScanSerpentine, DBSScanRandom}
+	for _, order := range orders {
+		t.Run(string(order), func(t *testing.T) {
+			imgA, _ := NewPackedImage(grayRamp(12, 12), 12, 12, Gray8)
+			imgB, _ := NewPackedImage(grayRamp(12, 12), 12, 12, Gray8)
+			opts := DBSOptions{
+				Seed:         DBSSeedThreshold,
+				Passes:       2,
+				Threshold:    127,
+				MoveMode:     DBSMoveHybrid,
+				Neighborhood: 1,
+				Metric:       DBSMetricBalanced,
+				ScanOrder:    order,
+				RandomSeed:   7,
+			}
+			if err := DirectBinarySearch(imgA, opts); err != nil {
+				t.Fatal(err)
+			}
+			if err := DirectBinarySearch(imgB, opts); err != nil {
+				t.Fatal(err)
+			}
+			if hashBytes(imgA.Pix) != hashBytes(imgB.Pix) {
+				t.Fatal("DBS scan order should be deterministic when seed is fixed")
+			}
+		})
+	}
+}
+
+func TestDBSReportPopulated(t *testing.T) {
+	img, _ := NewPackedImage(grayRamp(16, 16), 16, 16, Gray8)
+	report := DBSReport{}
+	err := DirectBinarySearch(img, DBSOptions{
+		Seed:         DBSSeedThreshold,
+		Passes:       2,
+		Threshold:    127,
+		MoveMode:     DBSMoveHybrid,
+		Neighborhood: 1,
+		Metric:       DBSMetricBalanced,
+		ScanOrder:    DBSScanSerpentine,
+		RadiusPolicy: DBSRadiusExpand,
+		MaxNoImprove: 1,
+		Restarts:     1,
+		RandomSeed:   5,
+		Report:       &report,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.PassesRun == 0 {
+		t.Fatal("expected DB S report to record pass count")
+	}
+	if report.AcceptedMoves == 0 {
+		t.Fatal("expected DBS report to record accepted moves")
+	}
+}
+
 func TestVariableDiffusionPreservesRGBAAlpha(t *testing.T) {
 	pix := rgbaGradient(12, 12)
 	alpha := make([]uint8, 12*12)

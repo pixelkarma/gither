@@ -5,7 +5,10 @@ import "gither/internal/engine"
 type DBSSeed = engine.DBSSeed
 type DBSMoveMode = engine.DBSMoveMode
 type DBSMetric = engine.DBSMetric
+type DBSScanOrder = engine.DBSScanOrder
+type DBSRadiusPolicy = engine.DBSRadiusPolicy
 type DBSOptions = engine.DBSOptions
+type DBSReport = engine.DBSReport
 
 const (
 	DBSSeedThreshold = engine.DBSSeedThreshold
@@ -19,6 +22,13 @@ const (
 	DBSMetricFast       = engine.DBSMetricFast
 	DBSMetricBalanced   = engine.DBSMetricBalanced
 	DBSMetricPerceptual = engine.DBSMetricPerceptual
+
+	DBSScanRaster     = engine.DBSScanRaster
+	DBSScanSerpentine = engine.DBSScanSerpentine
+	DBSScanRandom     = engine.DBSScanRandom
+
+	DBSRadiusFixed  = engine.DBSRadiusFixed
+	DBSRadiusExpand = engine.DBSRadiusExpand
 )
 
 func DirectBinarySearch(img *Image, opts DBSOptions) error {

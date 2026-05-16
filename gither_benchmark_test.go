@@ -114,6 +114,66 @@ func BenchmarkAlgorithmsFixtureCat(b *testing.B) {
 	}
 }
 
+func BenchmarkDBSSchedulesFixtureCat(b *testing.B) {
+	src := mustLoadFixtureImage(b)
+	cases := []benchmarkCase{
+		{name: "preview", run: func(img *Image) error {
+			return DirectBinarySearch(img, DBSOptions{
+				Seed:         DBSSeedThreshold,
+				Passes:       1,
+				Threshold:    127,
+				MoveMode:     DBSMoveFlip,
+				Neighborhood: 1,
+				Metric:       DBSMetricFast,
+				ScanOrder:    DBSScanSerpentine,
+				RadiusPolicy: DBSRadiusFixed,
+				MaxNoImprove: 1,
+				RandomSeed:   7,
+			})
+		}},
+		{name: "balanced", run: func(img *Image) error {
+			return DirectBinarySearch(img, DBSOptions{
+				Seed:         DBSSeedThreshold,
+				Passes:       2,
+				Threshold:    127,
+				MoveMode:     DBSMoveHybrid,
+				Neighborhood: 1,
+				Metric:       DBSMetricBalanced,
+				ScanOrder:    DBSScanSerpentine,
+				RadiusPolicy: DBSRadiusFixed,
+				MaxNoImprove: 1,
+				RandomSeed:   7,
+			})
+		}},
+		{name: "hq", run: func(img *Image) error {
+			return DirectBinarySearch(img, DBSOptions{
+				Seed:         DBSSeedThreshold,
+				Passes:       3,
+				Threshold:    127,
+				MoveMode:     DBSMoveHybrid,
+				Neighborhood: 1,
+				Metric:       DBSMetricPerceptual,
+				ScanOrder:    DBSScanRandom,
+				RadiusPolicy: DBSRadiusExpand,
+				MaxNoImprove: 2,
+				Restarts:     1,
+				RandomSeed:   7,
+			})
+		}},
+	}
+	for _, bc := range cases {
+		b.Run(bc.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				img := src.Clone()
+				if err := bc.run(img); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
 func BenchmarkPaletteExtractionFixtureCat(b *testing.B) {
 	src := mustLoadFixtureImage(b)
 	b.Run("median-cut", func(b *testing.B) {

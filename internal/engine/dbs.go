@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"math/rand"
+
 	"gither/internal/core"
 	"gither/internal/kernels"
 	"gither/internal/maps"
@@ -10,6 +12,8 @@ import (
 type DBSSeed string
 type DBSMoveMode string
 type DBSMetric string
+type DBSScanOrder string
+type DBSRadiusPolicy string
 
 const (
 	DBSSeedThreshold DBSSeed = "threshold"
@@ -23,6 +27,13 @@ const (
 	DBSMetricFast       DBSMetric = "fast"
 	DBSMetricBalanced   DBSMetric = "balanced"
 	DBSMetricPerceptual DBSMetric = "perceptual"
+
+	DBSScanRaster     DBSScanOrder = "raster"
+	DBSScanSerpentine DBSScanOrder = "serpentine"
+	DBSScanRandom     DBSScanOrder = "random"
+
+	DBSRadiusFixed  DBSRadiusPolicy = "fixed"
+	DBSRadiusExpand DBSRadiusPolicy = "expand"
 )
 
 type DBSOptions struct {
@@ -32,6 +43,21 @@ type DBSOptions struct {
 	MoveMode     DBSMoveMode
 	Neighborhood int
 	Metric       DBSMetric
+	ScanOrder    DBSScanOrder
+	RadiusPolicy DBSRadiusPolicy
+	MaxNoImprove int
+	Restarts     int
+	RandomSeed   uint64
+	Report       *DBSReport
+}
+
+type DBSReport struct {
+	PassesRun        int
+	AcceptedMoves    int
+	FlipMoves        int
+	SwapMoves        int
+	RestartsUsed     int
+	LastImprovedPass int
 }
 
 type dbsMetricSpec struct {
@@ -58,6 +84,18 @@ func (o DBSOptions) withDefaults() DBSOptions {
 	if o.Metric == "" {
 		o.Metric = DBSMetricBalanced
 	}
+	if o.ScanOrder == "" {
+		o.ScanOrder = DBSScanRaster
+	}
+	if o.RadiusPolicy == "" {
+		o.RadiusPolicy = DBSRadiusFixed
+	}
+	if o.MaxNoImprove <= 0 {
+		o.MaxNoImprove = 1
+	}
+	if o.RandomSeed == 0 {
+		o.RandomSeed = 1
+	}
 	return o
 }
 
@@ -74,33 +112,126 @@ func DirectBinarySearch(img *core.Image, opts DBSOptions) error {
 	if err != nil {
 		return err
 	}
-	filtered := filteredGrayPlane(binary, img.Width, img.Height, metric)
+	bestBinary := append([]uint8(nil), binary...)
+	bestFiltered := filteredGrayPlane(bestBinary, img.Width, img.Height, metric)
+	bestScore := dbsFullScore(bestFiltered, targetFiltered, errorWeights)
+	totalReport := DBSReport{}
+	for restart := 0; restart <= opts.Restarts; restart++ {
+		workingBinary := append([]uint8(nil), binary...)
+		workingFiltered := filteredGrayPlane(workingBinary, img.Width, img.Height, metric)
+		report := dbsOptimize(workingBinary, workingFiltered, targetFiltered, errorWeights, img.Width, img.Height, opts, metric, restart)
+		score := dbsFullScore(workingFiltered, targetFiltered, errorWeights)
+		if restart == 0 || score < bestScore {
+			bestScore = score
+			copy(bestBinary, workingBinary)
+			copy(bestFiltered, workingFiltered)
+		}
+		totalReport.PassesRun += report.PassesRun
+		totalReport.AcceptedMoves += report.AcceptedMoves
+		totalReport.FlipMoves += report.FlipMoves
+		totalReport.SwapMoves += report.SwapMoves
+		if report.LastImprovedPass > 0 {
+			totalReport.LastImprovedPass = report.LastImprovedPass
+		}
+		totalReport.RestartsUsed = restart
+	}
+	if opts.Report != nil {
+		*opts.Report = totalReport
+	}
+	writeBinaryToImage(img, bestBinary)
+	return nil
+}
+
+func dbsOptimize(binary []uint8, filtered, targetFiltered, errorWeights []float32, width, height int, opts DBSOptions, metric dbsMetricSpec, restart int) DBSReport {
+	report := DBSReport{RestartsUsed: restart}
+	noImprovePasses := 0
 	for pass := 0; pass < opts.Passes; pass++ {
 		improved := false
-		for y := 0; y < img.Height; y++ {
-			for x := 0; x < img.Width; x++ {
-				idx := y*img.Width + x
-				original := binary[idx]
-				bestMode, bestSwapX, bestSwapY, bestBefore, bestAfter := dbsBestMove(binary, filtered, targetFiltered, errorWeights, img.Width, img.Height, x, y, opts, metric)
-				if bestAfter+1e-9 < bestBefore {
-					improved = true
-					switch bestMode {
-					case DBSMoveFlip:
-						delta := dbsPixelDelta(original)
-						binary[idx] = original ^ 0xff
-						applyFilteredDelta(filtered, img.Width, img.Height, x, y, delta, metric)
-					case DBSMoveSwap:
-						dbsApplySwap(binary, filtered, img.Width, img.Height, x, y, bestSwapX, bestSwapY, metric)
-					}
+		report.PassesRun++
+		radius := dbsEffectiveRadius(opts, pass)
+		dbsIteratePixels(width, height, opts, restart, pass, func(x, y int) {
+			idx := y*width + x
+			original := binary[idx]
+			moveOpts := opts
+			moveOpts.Neighborhood = radius
+			bestMode, bestSwapX, bestSwapY, bestBefore, bestAfter := dbsBestMove(binary, filtered, targetFiltered, errorWeights, width, height, x, y, moveOpts, metric)
+			if bestAfter+1e-9 < bestBefore {
+				improved = true
+				report.AcceptedMoves++
+				report.LastImprovedPass = report.PassesRun
+				switch bestMode {
+				case DBSMoveFlip:
+					report.FlipMoves++
+					delta := dbsPixelDelta(original)
+					binary[idx] = original ^ 0xff
+					applyFilteredDelta(filtered, width, height, x, y, delta, metric)
+				case DBSMoveSwap:
+					report.SwapMoves++
+					dbsApplySwap(binary, filtered, width, height, x, y, bestSwapX, bestSwapY, metric)
+				}
+			}
+		})
+		if !improved {
+			noImprovePasses++
+			if noImprovePasses >= opts.MaxNoImprove {
+				break
+			}
+			continue
+		}
+		noImprovePasses = 0
+	}
+	return report
+}
+
+func dbsIteratePixels(width, height int, opts DBSOptions, restart, pass int, fn func(x, y int)) {
+	switch opts.ScanOrder {
+	case DBSScanSerpentine:
+		for y := 0; y < height; y++ {
+			if y%2 == 0 {
+				for x := 0; x < width; x++ {
+					fn(x, y)
+				}
+			} else {
+				for x := width - 1; x >= 0; x-- {
+					fn(x, y)
 				}
 			}
 		}
-		if !improved {
-			break
+	case DBSScanRandom:
+		order := make([]int, width*height)
+		for i := range order {
+			order[i] = i
+		}
+		rng := rand.New(rand.NewSource(int64(opts.RandomSeed) + int64(restart*131+pass*17)))
+		rng.Shuffle(len(order), func(i, j int) {
+			order[i], order[j] = order[j], order[i]
+		})
+		for _, idx := range order {
+			fn(idx%width, idx/width)
+		}
+	default:
+		for y := 0; y < height; y++ {
+			for x := 0; x < width; x++ {
+				fn(x, y)
+			}
 		}
 	}
-	writeBinaryToImage(img, binary)
-	return nil
+}
+
+func dbsEffectiveRadius(opts DBSOptions, pass int) int {
+	if opts.RadiusPolicy != DBSRadiusExpand {
+		return opts.Neighborhood
+	}
+	return opts.Neighborhood + pass
+}
+
+func dbsFullScore(filtered, targetFiltered, errorWeights []float32) float64 {
+	var score float64
+	for i := range filtered {
+		diff := float64(filtered[i] - targetFiltered[i])
+		score += diff * diff * float64(errorWeights[i])
+	}
+	return score
 }
 
 func grayscalePlane(img *core.Image) []uint8 {

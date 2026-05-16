@@ -38,6 +38,11 @@ type config struct {
 	dbsMove        string
 	dbsRadius      int
 	dbsMetric      string
+	dbsSchedule    string
+	dbsScan        string
+	dbsNoImprove   int
+	dbsRestarts    int
+	dbsRadiusMode  string
 	mapPath        string
 	mapWidth       int
 	mapHeight      int
@@ -74,6 +79,11 @@ func parseFlags() config {
 	flag.StringVar(&cfg.dbsMove, "dbs-move", "hybrid", "DBS move mode: flip|swap|hybrid")
 	flag.IntVar(&cfg.dbsRadius, "dbs-radius", 1, "DBS swap neighborhood radius")
 	flag.StringVar(&cfg.dbsMetric, "dbs-metric", "balanced", "DBS metric: fast|balanced|perceptual")
+	flag.StringVar(&cfg.dbsSchedule, "dbs-schedule", "custom", "DBS schedule: custom|preview|balanced|hq")
+	flag.StringVar(&cfg.dbsScan, "dbs-scan", "raster", "DBS scan order: raster|serpentine|random")
+	flag.IntVar(&cfg.dbsNoImprove, "dbs-max-no-improve", 1, "DBS consecutive no-improvement passes before stop")
+	flag.IntVar(&cfg.dbsRestarts, "dbs-restarts", 0, "DBS restart count")
+	flag.StringVar(&cfg.dbsRadiusMode, "dbs-radius-policy", "fixed", "DBS radius policy: fixed|expand")
 	flag.StringVar(&cfg.mapPath, "map", "", "path to custom ordered map file")
 	flag.IntVar(&cfg.mapWidth, "map-width", 0, "custom ordered map width")
 	flag.IntVar(&cfg.mapHeight, "map-height", 0, "custom ordered map height")
@@ -111,7 +121,11 @@ func run(cfg config) error {
 	if err != nil {
 		return err
 	}
-	if err := applyAlgorithm(img, cfg, opts); err != nil {
+	var dbsReport *gither.DBSReport
+	if cfg.algorithm == "dbs" {
+		dbsReport = &gither.DBSReport{}
+	}
+	if err := applyAlgorithm(img, cfg, opts, dbsReport); err != nil {
 		return err
 	}
 	processedAt := time.Now()
@@ -119,7 +133,7 @@ func run(cfg config) error {
 		return err
 	}
 	if cfg.verbose {
-		printStats(cfg, img, startedAt, processedAt, time.Now())
+		printStats(cfg, img, dbsReport, startedAt, processedAt, time.Now())
 	}
 	return nil
 }
@@ -237,7 +251,7 @@ func parseHexColor(value string) (gither.Color, error) {
 	return gither.Color{R: uint8(r), G: uint8(g), B: uint8(b)}, nil
 }
 
-func applyAlgorithm(img *gither.Image, cfg config, opts gither.Options) error {
+func applyAlgorithm(img *gither.Image, cfg config, opts gither.Options, dbsReport *gither.DBSReport) error {
 	switch cfg.algorithm {
 	case "bayer-2x2":
 		return gither.Bayer2x2(img, opts)
@@ -334,14 +348,8 @@ func applyAlgorithm(img *gither.Image, cfg config, opts gither.Options) error {
 	case "clustered-am-fm-64x64":
 		return gither.ClusteredAMFM64x64(img, opts)
 	case "dbs":
-		return gither.DirectBinarySearch(img, gither.DBSOptions{
-			Seed:         parseDBSSeed(cfg.dbsSeed),
-			Passes:       cfg.dbsPasses,
-			Threshold:    uint8(clampInt(cfg.threshold, 0, 255)),
-			MoveMode:     parseDBSMoveMode(cfg.dbsMove),
-			Neighborhood: cfg.dbsRadius,
-			Metric:       parseDBSMetric(cfg.dbsMetric),
-		})
+		dbsOpts := buildDBSOptions(cfg, dbsReport)
+		return gither.DirectBinarySearch(img, dbsOpts)
 	default:
 		return fmt.Errorf("unsupported algorithm %q", cfg.algorithm)
 	}
@@ -397,21 +405,82 @@ func clampInt(v, lo, hi int) int {
 	return v
 }
 
-func printStats(cfg config, img *gither.Image, startedAt, processedAt, finishedAt time.Time) {
+func buildDBSOptions(cfg config, report *gither.DBSReport) gither.DBSOptions {
+	opts := gither.DBSOptions{
+		Seed:         parseDBSSeed(cfg.dbsSeed),
+		Passes:       cfg.dbsPasses,
+		Threshold:    uint8(clampInt(cfg.threshold, 0, 255)),
+		MoveMode:     parseDBSMoveMode(cfg.dbsMove),
+		Neighborhood: cfg.dbsRadius,
+		Metric:       parseDBSMetric(cfg.dbsMetric),
+		ScanOrder:    parseDBSScanOrder(cfg.dbsScan),
+		RadiusPolicy: parseDBSRadiusPolicy(cfg.dbsRadiusMode),
+		MaxNoImprove: cfg.dbsNoImprove,
+		Restarts:     cfg.dbsRestarts,
+		RandomSeed:   cfg.seed,
+		Report:       report,
+	}
+	applyDBSSchedulePreset(&opts, cfg.dbsSchedule)
+	return opts
+}
+
+func applyDBSSchedulePreset(opts *gither.DBSOptions, schedule string) {
+	switch strings.ToLower(strings.TrimSpace(schedule)) {
+	case "preview":
+		opts.Passes = 1
+		opts.MaxNoImprove = 1
+		opts.Restarts = 0
+		opts.MoveMode = gither.DBSMoveFlip
+		opts.Metric = gither.DBSMetricFast
+		opts.ScanOrder = gither.DBSScanSerpentine
+		opts.RadiusPolicy = gither.DBSRadiusFixed
+	case "balanced":
+		opts.Passes = 2
+		opts.MaxNoImprove = 1
+		opts.Restarts = 0
+		opts.MoveMode = gither.DBSMoveHybrid
+		opts.Metric = gither.DBSMetricBalanced
+		opts.ScanOrder = gither.DBSScanSerpentine
+		opts.RadiusPolicy = gither.DBSRadiusFixed
+	case "hq":
+		opts.Passes = 3
+		opts.MaxNoImprove = 2
+		opts.Restarts = 1
+		opts.MoveMode = gither.DBSMoveHybrid
+		opts.Metric = gither.DBSMetricPerceptual
+		opts.ScanOrder = gither.DBSScanRandom
+		opts.RadiusPolicy = gither.DBSRadiusExpand
+	}
+}
+
+func printStats(cfg config, img *gither.Image, dbsReport *gither.DBSReport, startedAt, processedAt, finishedAt time.Time) {
 	processElapsed := processedAt.Sub(startedAt)
 	saveElapsed := finishedAt.Sub(processedAt)
 	totalElapsed := finishedAt.Sub(startedAt)
-	fmt.Fprintf(os.Stderr,
-		"stats algorithm=%s quantizer=%s size=%dx%d process_ms=%.3f save_ms=%.3f total_ms=%.3f output=%s\n",
-		cfg.algorithm,
-		describeQuantizer(cfg),
-		img.Width,
-		img.Height,
-		float64(processElapsed)/float64(time.Millisecond),
-		float64(saveElapsed)/float64(time.Millisecond),
-		float64(totalElapsed)/float64(time.Millisecond),
-		cfg.out,
-	)
+	if cfg.algorithm == "dbs" && dbsReport != nil {
+		dbsOpts := buildDBSOptions(cfg, nil)
+		fmt.Fprintf(os.Stderr,
+			"stats algorithm=%s quantizer=%s size=%dx%d process_ms=%.3f save_ms=%.3f total_ms=%.3f dbs_schedule=%s dbs_metric=%s dbs_scan=%s dbs_passes_run=%d dbs_moves=%d dbs_flips=%d dbs_swaps=%d dbs_restarts=%d output=%s\n",
+			cfg.algorithm,
+			describeQuantizer(cfg),
+			img.Width,
+			img.Height,
+			float64(processElapsed)/float64(time.Millisecond),
+			float64(saveElapsed)/float64(time.Millisecond),
+			float64(totalElapsed)/float64(time.Millisecond),
+			strings.TrimSpace(cfg.dbsSchedule),
+			string(dbsOpts.Metric),
+			string(dbsOpts.ScanOrder),
+			dbsReport.PassesRun,
+			dbsReport.AcceptedMoves,
+			dbsReport.FlipMoves,
+			dbsReport.SwapMoves,
+			dbsReport.RestartsUsed,
+			cfg.out,
+		)
+		return
+	}
+	fmt.Fprintf(os.Stderr, "stats algorithm=%s quantizer=%s size=%dx%d process_ms=%.3f save_ms=%.3f total_ms=%.3f output=%s\n", cfg.algorithm, describeQuantizer(cfg), img.Width, img.Height, float64(processElapsed)/float64(time.Millisecond), float64(saveElapsed)/float64(time.Millisecond), float64(totalElapsed)/float64(time.Millisecond), cfg.out)
 }
 
 func describeQuantizer(cfg config) string {
@@ -480,5 +549,25 @@ func parseDBSMetric(value string) gither.DBSMetric {
 		return gither.DBSMetricPerceptual
 	default:
 		return gither.DBSMetricBalanced
+	}
+}
+
+func parseDBSScanOrder(value string) gither.DBSScanOrder {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "serpentine":
+		return gither.DBSScanSerpentine
+	case "random":
+		return gither.DBSScanRandom
+	default:
+		return gither.DBSScanRaster
+	}
+}
+
+func parseDBSRadiusPolicy(value string) gither.DBSRadiusPolicy {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "expand":
+		return gither.DBSRadiusExpand
+	default:
+		return gither.DBSRadiusFixed
 	}
 }
