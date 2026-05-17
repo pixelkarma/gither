@@ -13,6 +13,8 @@ Status: `alpha`
 - installable CLI: `go install github.com/pixelkarma/gither/cmd/gither@latest`
 - license: [The Unlicense](/Users/admin/Documents/dither/gither/LICENSE:1)
 
+![Meow](https://raw.githubusercontent.com/pixelkarma/gither/refs/heads/main/docs/sample.png)
+
 ## Why gither
 
 - broad algorithm coverage across ordered, diffusion, halftone, Yliluoma, variable diffusion, and DBS families
