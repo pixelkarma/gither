@@ -7,11 +7,7 @@
 
 The CLI is the front door. The goal is to make `gither` a serious option when you want broad dithering coverage from a single binary, while the library stays clean enough to use as the Go-native core underneath.
 
-Status: `alpha`
-
-- module path: [`github.com/pixelkarma/gither`](https://github.com/pixelkarma/gither)
-- installable CLI: `go install github.com/pixelkarma/gither/cmd/gither@latest`
-- license: [The Unlicense](/Users/admin/Documents/dither/gither/LICENSE:1)
+license: [The Unlicense](/Users/admin/Documents/dither/gither/LICENSE:1)
 
 ![Meow](https://raw.githubusercontent.com/pixelkarma/gither/refs/heads/main/docs/sample.png)
 
