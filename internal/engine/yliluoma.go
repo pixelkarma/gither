@@ -49,16 +49,21 @@ func applyYliluoma(img *core.Image, opts core.Options, mode int) error {
 }
 
 func applyYliluoma1Fast(img *core.Image, palette core.Palette) error {
-	lut := buildYliluoma1LUT(palette)
 	channels := img.ChannelCount()
 	parallelRows(img.Height, func(y0, y1 int) {
+		cache := make(map[uint32]mixingPlan, (img.Width*(y1-y0))/4)
 		for y := y0; y < y1; y++ {
 			row := img.Row(y)
 			rowRankBase := (y % 8) * 8
 			for x := 0; x < img.Width; x++ {
 				offset := x * channels
 				r, g, b := adjustedColorForYliluoma(img.Format, row, offset)
-				plan := lut[yliluoma1LUTKey(r, g, b)]
+				key := uint32(r)<<16 | uint32(g)<<8 | uint32(b)
+				plan, ok := cache[key]
+				if !ok {
+					plan = deviseBestMixingPlanExact(r, g, b, palette)
+					cache[key] = plan
+				}
 				c := palette[plan.first]
 				if int(maps.Bayer8x8[rowRankBase+(x%8)]) < int(plan.ratio) {
 					c = palette[plan.second]
@@ -70,32 +75,13 @@ func applyYliluoma1Fast(img *core.Image, palette core.Palette) error {
 	return nil
 }
 
-func buildYliluoma1LUT(palette core.Palette) []mixingPlan {
-	const binsPerChannel = 16
-	lut := make([]mixingPlan, binsPerChannel*binsPerChannel*binsPerChannel)
-	candidateLimit := len(palette)
-	if candidateLimit > 6 {
-		candidateLimit = 6
-	}
-	parallelRows(len(lut), func(start, end int) {
-		for i := start; i < end; i++ {
-			r := uint8(((i >> 8) & 0x0f) * 17)
-			g := uint8(((i >> 4) & 0x0f) * 17)
-			b := uint8((i & 0x0f) * 17)
-			candidates := nearestPaletteIndexesFixed(palette, r, g, b, candidateLimit)
-			lut[i] = buildMixingPlanFromCandidates(r, g, b, palette, candidates)
-		}
-	})
-	return lut
+func applyYliluoma2Fast(img *core.Image, palette core.Palette) error {
+	lut := buildYliluomaSequenceLUT(palette, false)
+	return applyYliluomaSequenceLUT(img, palette, lut)
 }
 
 func yliluoma1LUTKey(r, g, b uint8) int {
 	return int(r>>4)<<8 | int(g>>4)<<4 | int(b>>4)
-}
-
-func applyYliluoma2Fast(img *core.Image, palette core.Palette) error {
-	lut := buildYliluomaSequenceLUT(palette, false)
-	return applyYliluomaSequenceLUT(img, palette, lut)
 }
 
 func applyYliluoma3Fast(img *core.Image, palette core.Palette) error {
@@ -172,6 +158,26 @@ func writeColor(format core.Format, row []uint8, offset int, c core.Color) {
 func buildMixingPlan(r, g, b uint8, palette core.Palette) mixingPlan {
 	candidates := nearestPaletteIndexesFixed(palette, r, g, b, minInt(8, len(palette)))
 	return buildMixingPlanFromCandidates(r, g, b, palette, candidates)
+}
+
+func deviseBestMixingPlanExact(r, g, b uint8, palette core.Palette) mixingPlan {
+	best := mixingPlan{}
+	bestErr := uint32(math.MaxUint32)
+	for firstIndex, first := range palette {
+		for secondIndex, second := range palette {
+			for ratio := 0; ratio < 64; ratio++ {
+				mixedR := interpolateChannel(first.R, second.R, uint8(ratio), 64)
+				mixedG := interpolateChannel(first.G, second.G, uint8(ratio), 64)
+				mixedB := interpolateChannel(first.B, second.B, uint8(ratio), 64)
+				err := mathx.RGBDistanceSq(r, g, b, mixedR, mixedG, mixedB)
+				if err < bestErr {
+					bestErr = err
+					best = mixingPlan{first: firstIndex, second: secondIndex, ratio: uint8(ratio)}
+				}
+			}
+		}
+	}
+	return best
 }
 
 func buildMixingPlanFromCandidates(r, g, b uint8, palette core.Palette, candidates []int) mixingPlan {
@@ -333,6 +339,12 @@ func diffSq(a, b [3]float64) float64 {
 	dg := a[1] - b[1]
 	db := a[2] - b[2]
 	return dr*dr + dg*dg + db*db
+}
+
+func interpolateChannel(a, b, ratio, levels uint8) uint8 {
+	aInt := int(a)
+	delta := int(b) - aInt
+	return uint8(aInt + (int(ratio)*delta)/int(levels))
 }
 
 func gammaToLinear(v uint8) float64 {
