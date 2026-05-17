@@ -3,6 +3,7 @@ package engine
 import (
 	"math"
 	"runtime"
+	"sort"
 	"sync"
 
 	"github.com/pixelkarma/gither/internal/core"
@@ -76,8 +77,27 @@ func applyYliluoma1Fast(img *core.Image, palette core.Palette) error {
 }
 
 func applyYliluoma2Fast(img *core.Image, palette core.Palette) error {
-	lut := buildYliluomaSequenceLUT(palette, false)
-	return applyYliluomaSequenceLUT(img, palette, lut)
+	channels := img.ChannelCount()
+	paletteLuma := buildPaletteLuma(palette)
+	parallelRows(img.Height, func(y0, y1 int) {
+		cache := make(map[uint32][64]uint8, (img.Width*(y1-y0))/4)
+		for y := y0; y < y1; y++ {
+			row := img.Row(y)
+			rowRankBase := (y % 8) * 8
+			for x := 0; x < img.Width; x++ {
+				offset := x * channels
+				r, g, b := adjustedColorForYliluoma(img.Format, row, offset)
+				key := uint32(r)<<16 | uint32(g)<<8 | uint32(b)
+				seq, ok := cache[key]
+				if !ok {
+					seq = deviseColorSequenceExact(r, g, b, palette, paletteLuma)
+					cache[key] = seq
+				}
+				writeColor(img.Format, row, offset, palette[seq[maps.Bayer8x8[rowRankBase+(x%8)]]])
+			}
+		}
+	})
+	return nil
 }
 
 func yliluoma1LUTKey(r, g, b uint8) int {
@@ -203,6 +223,66 @@ func buildMixSequence(r, g, b uint8, palette core.Palette, gamma bool) [64]uint8
 		return buildMixSequenceFromCandidatesGamma(r, g, b, palette, buildLinearPalette(palette), candidates)
 	}
 	return buildMixSequenceFromCandidates(r, g, b, palette, candidates)
+}
+
+func deviseColorSequenceExact(r, g, b uint8, palette core.Palette, paletteLuma []uint32) [64]uint8 {
+	const sequenceLen = 64
+	var seq [64]uint8
+	proportionTotal := 0
+	soFar := [3]uint32{}
+	target := [3]uint8{r, g, b}
+
+	for proportionTotal < sequenceLen {
+		chosenAmount := 1
+		chosenIndex := 0
+		maxTestCount := proportionTotal
+		if maxTestCount < 1 {
+			maxTestCount = 1
+		}
+		leastPenalty := math.MaxFloat64
+
+		for index, color := range palette {
+			colorSum := [3]uint32{uint32(color.R), uint32(color.G), uint32(color.B)}
+			for amount := 1; amount <= maxTestCount; amount *= 2 {
+				total := proportionTotal + amount
+				totalU32 := uint32(total)
+				amountU32 := uint32(amount)
+				tested := [3]uint8{
+					uint8((soFar[0] + colorSum[0]*amountU32) / totalU32),
+					uint8((soFar[1] + colorSum[1]*amountU32) / totalU32),
+					uint8((soFar[2] + colorSum[2]*amountU32) / totalU32),
+				}
+				penalty := colorCompareRGBLuma(target, tested)
+				if penalty < leastPenalty {
+					leastPenalty = penalty
+					chosenIndex = index
+					chosenAmount = amount
+				}
+			}
+		}
+
+		for i := 0; i < chosenAmount && proportionTotal < sequenceLen; i++ {
+			seq[proportionTotal] = uint8(chosenIndex)
+			proportionTotal++
+		}
+
+		chosen := palette[chosenIndex]
+		chosenAmountU32 := uint32(chosenAmount)
+		soFar[0] += uint32(chosen.R) * chosenAmountU32
+		soFar[1] += uint32(chosen.G) * chosenAmountU32
+		soFar[2] += uint32(chosen.B) * chosenAmountU32
+	}
+
+	sort.Slice(seq[:], func(i, j int) bool {
+		left := seq[i]
+		right := seq[j]
+		if paletteLuma[left] == paletteLuma[right] {
+			return left < right
+		}
+		return paletteLuma[left] < paletteLuma[right]
+	})
+
+	return seq
 }
 
 func buildMixSequenceFromCandidates(r, g, b uint8, palette core.Palette, candidates []int) [64]uint8 {
@@ -341,6 +421,16 @@ func diffSq(a, b [3]float64) float64 {
 	return dr*dr + dg*dg + db*db
 }
 
+func colorCompareRGBLuma(a, b [3]uint8) float64 {
+	lumaA := (float64(a[0])*299.0 + float64(a[1])*587.0 + float64(a[2])*114.0) / (255.0 * 1000.0)
+	lumaB := (float64(b[0])*299.0 + float64(b[1])*587.0 + float64(b[2])*114.0) / (255.0 * 1000.0)
+	lumaDiff := lumaA - lumaB
+	diffR := (float64(a[0]) - float64(b[0])) / 255.0
+	diffG := (float64(a[1]) - float64(b[1])) / 255.0
+	diffB := (float64(a[2]) - float64(b[2])) / 255.0
+	return (diffR*diffR*0.299+diffG*diffG*0.587+diffB*diffB*0.114)*0.75 + lumaDiff*lumaDiff
+}
+
 func interpolateChannel(a, b, ratio, levels uint8) uint8 {
 	aInt := int(a)
 	delta := int(b) - aInt
@@ -371,6 +461,14 @@ func buildLinearPalette(palette core.Palette) [][3]float64 {
 			gammaToLinearFast(c.G),
 			gammaToLinearFast(c.B),
 		}
+	}
+	return out
+}
+
+func buildPaletteLuma(palette core.Palette) []uint32 {
+	out := make([]uint32, len(palette))
+	for i, c := range palette {
+		out[i] = uint32(c.R)*299 + uint32(c.G)*587 + uint32(c.B)*114
 	}
 	return out
 }
