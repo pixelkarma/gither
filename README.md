@@ -5,7 +5,7 @@
 - a CLI for batch image conversion
 - a Go library for embedding dithering directly into your own code
 
-The CLI is the front door. The goal is to make `gither` a serious option when you want broad dithering coverage from a single binary, while the library stays clean enough to use as the Go-native core underneath.
+The goal is to make `gither` a serious option when you want broad dithering coverage from a single binary, while the library stays clean enough to use as the Go-native core underneath.
 
 license: [The Unlicense](/Users/admin/Documents/dither/gither/LICENSE:1)
 
@@ -17,7 +17,6 @@ license: [The Unlicense](/Users/admin/Documents/dither/gither/LICENSE:1)
 - usable as both a CLI and a library
 - auto-palette and explicit-palette workflows
 - dedicated DBS surface, including clustered, multilevel, and palette-index color DBS
-- release automation for prebuilt binaries through GitHub Releases
 
 ## Install
 
