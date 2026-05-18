@@ -21,7 +21,7 @@ func loadImage(path string) (image.Image, error) {
 		return nil, err
 	}
 	defer file.Close()
-	img, _, err := image.Decode(file)
+	img, _, err := image.Decode(bufio.NewReaderSize(file, 1<<20))
 	return img, err
 }
 
@@ -31,12 +31,18 @@ func saveImage(path string, img image.Image, jpegQuality int) error {
 		return err
 	}
 	defer file.Close()
+	writer := bufio.NewWriterSize(file, 1<<20)
+	var encodeErr error
 	switch strings.ToLower(filepath.Ext(path)) {
 	case ".jpg", ".jpeg":
-		return jpeg.Encode(file, img, &jpeg.Options{Quality: jpegQuality})
+		encodeErr = jpeg.Encode(writer, img, &jpeg.Options{Quality: jpegQuality})
 	default:
-		return png.Encode(file, img)
+		encodeErr = png.Encode(writer, img)
 	}
+	if encodeErr != nil {
+		return encodeErr
+	}
+	return writer.Flush()
 }
 
 func loadOrderedMap(path string, width, height int, strength float32) (gither.OrderedMap, error) {

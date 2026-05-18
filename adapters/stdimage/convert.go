@@ -2,8 +2,8 @@
 package stdimage
 
 import (
+	"bufio"
 	"image"
-	"image/color"
 	"image/jpeg"
 	"image/png"
 	"os"
@@ -21,7 +21,7 @@ func LoadPath(path string) (*gither.Image, error) {
 	}
 	defer file.Close()
 
-	img, _, err := image.Decode(file)
+	img, _, err := image.Decode(bufio.NewReaderSize(file, 1<<20))
 	if err != nil {
 		return nil, err
 	}
@@ -35,13 +35,19 @@ func SavePath(path string, img image.Image, jpegQuality int) error {
 		return err
 	}
 	defer file.Close()
+	writer := bufio.NewWriterSize(file, 1<<20)
 
+	var encodeErr error
 	switch strings.ToLower(filepath.Ext(path)) {
 	case ".jpg", ".jpeg":
-		return jpeg.Encode(file, img, &jpeg.Options{Quality: jpegQuality})
+		encodeErr = jpeg.Encode(writer, img, &jpeg.Options{Quality: jpegQuality})
 	default:
-		return png.Encode(file, img)
+		encodeErr = png.Encode(writer, img)
 	}
+	if encodeErr != nil {
+		return encodeErr
+	}
+	return writer.Flush()
 }
 
 // FromImage converts a standard library image into a gither.Image.
@@ -98,10 +104,15 @@ func ToImage(src *gither.Image) image.Image {
 	case gither.RGB8:
 		out := image.NewRGBA(image.Rect(0, 0, src.Width, src.Height))
 		for y := 0; y < src.Height; y++ {
-			row := src.Row(y)
-			for x := 0; x < src.Width; x++ {
-				i := x * 3
-				out.SetRGBA(x, y, color.RGBA{R: row[i], G: row[i+1], B: row[i+2], A: 255})
+			srcRow := src.Row(y)
+			dstRow := out.Pix[y*out.Stride : y*out.Stride+src.Width*4]
+			for x, srcOffset, dstOffset := 0, 0, 0; x < src.Width; x++ {
+				dstRow[dstOffset] = srcRow[srcOffset]
+				dstRow[dstOffset+1] = srcRow[srcOffset+1]
+				dstRow[dstOffset+2] = srcRow[srcOffset+2]
+				dstRow[dstOffset+3] = 255
+				srcOffset += 3
+				dstOffset += 4
 			}
 		}
 		return out
