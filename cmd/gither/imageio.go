@@ -37,7 +37,7 @@ func saveImage(path string, img image.Image, jpegQuality int) error {
 	case ".jpg", ".jpeg":
 		encodeErr = jpeg.Encode(writer, img, &jpeg.Options{Quality: jpegQuality})
 	default:
-		encodeErr = png.Encode(writer, img)
+		encodeErr = (&png.Encoder{CompressionLevel: png.BestSpeed}).Encode(writer, img)
 	}
 	if encodeErr != nil {
 		return encodeErr
