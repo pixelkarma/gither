@@ -76,20 +76,24 @@ func FromImage(src image.Image) (*gither.Image, error) {
 		}
 		return gither.NewPackedImage(pix, width, height, gither.RGBA8)
 	default:
-		pix := make([]uint8, width*height*4)
-		offset := 0
-		for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-			for x := bounds.Min.X; x < bounds.Max.X; x++ {
-				r, g, b, a := src.At(x, y).RGBA()
-				pix[offset] = uint8(r >> 8)
-				pix[offset+1] = uint8(g >> 8)
-				pix[offset+2] = uint8(b >> 8)
-				pix[offset+3] = uint8(a >> 8)
-				offset += 4
-			}
-		}
-		return gither.NewPackedImage(pix, width, height, gither.RGBA8)
+		return convertGenericToRGBA(src, bounds, width, height)
 	}
+}
+
+func convertGenericToRGBA(src image.Image, bounds image.Rectangle, width, height int) (*gither.Image, error) {
+	pix := make([]uint8, width*height*4)
+	offset := 0
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			r, g, b, a := src.At(x, y).RGBA()
+			pix[offset] = uint8(r >> 8)
+			pix[offset+1] = uint8(g >> 8)
+			pix[offset+2] = uint8(b >> 8)
+			pix[offset+3] = uint8(a >> 8)
+			offset += 4
+		}
+	}
+	return gither.NewPackedImage(pix, width, height, gither.RGBA8)
 }
 
 // ToImage converts a gither.Image into a standard library image.Image.
