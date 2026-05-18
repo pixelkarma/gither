@@ -19,7 +19,7 @@ func main() {
 }
 
 func run(cfg config) error {
-	startedAt := time.Now()
+	timings := stageTimings{startedAt: time.Now()}
 	if cfg.in == "" || cfg.out == "" {
 		return errors.New("both -in and -out are required")
 	}
@@ -27,10 +27,12 @@ func run(cfg config) error {
 	if err != nil {
 		return err
 	}
+	timings.loadedAt = time.Now()
 	img, err := stdimage.FromImage(src)
 	if err != nil {
 		return err
 	}
+	timings.convertedAt = time.Now()
 	opts, err := buildOptions(cfg, img)
 	if err != nil {
 		return err
@@ -39,15 +41,17 @@ func run(cfg config) error {
 	if isDBSAlgorithm(cfg.algorithm) {
 		dbsReport = &gither.DBSReport{}
 	}
+	timings.preparedAt = time.Now()
 	if err := applyAlgorithm(img, cfg, opts, dbsReport); err != nil {
 		return err
 	}
-	processedAt := time.Now()
+	timings.processedAt = time.Now()
 	if err := saveImage(cfg.out, stdimage.ToImage(img), cfg.jpegQuality); err != nil {
 		return err
 	}
+	timings.finishedAt = time.Now()
 	if cfg.verbose {
-		printStats(cfg, img, dbsReport, startedAt, processedAt, time.Now())
+		printStats(cfg, img, dbsReport, timings)
 	}
 	return nil
 }
